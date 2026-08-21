@@ -13,6 +13,7 @@ type Repository interface {
 	Create(ctx context.Context, m *Message) error
 	GetByID(ctx context.Context, id uuid.UUID) (*Message, error)
 	ListByMailbox(ctx context.Context, mailboxID uuid.UUID) ([]*Message, error)
+	GetAllBlobIDs(ctx context.Context) (map[string]bool, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -82,6 +83,28 @@ func (r *postgresRepository) ListByMailbox(ctx context.Context, mailboxID uuid.U
 		return nil, err
 	}
 	return messages, nil
+}
+
+func (r *postgresRepository) GetAllBlobIDs(ctx context.Context) (map[string]bool, error) {
+	query := `SELECT DISTINCT blob_id FROM messages`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("repository get all blob ids: %w", err)
+	}
+	defer rows.Close()
+
+	blobIDs := make(map[string]bool)
+	for rows.Next() {
+		var blobID string
+		if err := rows.Scan(&blobID); err != nil {
+			return nil, fmt.Errorf("repository scan blob id: %w", err)
+		}
+		blobIDs[blobID] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return blobIDs, nil
 }
 
 func (r *postgresRepository) Delete(ctx context.Context, id uuid.UUID) error {

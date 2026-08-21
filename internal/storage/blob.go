@@ -20,4 +20,5 @@ type BlobStore interface {
 	Get(ctx context.Context, id string) (io.ReadCloser, error)
 	Delete(ctx context.Context, id string) error
 	Exists(ctx context.Context, id string) (bool, error)
+	ListIDs(ctx context.Context) ([]string, error)
 }

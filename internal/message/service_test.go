@@ -99,6 +99,16 @@ func (r *mockMessageRepo) ListByMailbox(ctx context.Context, mailboxID uuid.UUID
 	return list, nil
 }
 
+func (r *mockMessageRepo) GetAllBlobIDs(ctx context.Context) (map[string]bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	blobIDs := make(map[string]bool)
+	for _, m := range r.messages {
+		blobIDs[m.BlobID] = true
+	}
+	return blobIDs, nil
+}
+
 func (r *mockMessageRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -108,6 +118,7 @@ func (r *mockMessageRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	delete(r.messages, id)
 	return nil
 }
+
 
 func TestMessageService(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "openmail-msg-test-*")

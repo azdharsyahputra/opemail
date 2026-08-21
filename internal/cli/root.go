@@ -19,6 +19,7 @@ var (
 	domainService  domain.Service
 	mailboxService mailbox.Service
 	blobStore      storage.BlobStore
+	messageRepo    message.Repository
 	messageService message.Service
 )
 
@@ -50,7 +51,7 @@ var rootCmd = &cobra.Command{
 
 		domainRepo := domain.NewPostgresRepository(db)
 		mailboxRepo := mailbox.NewPostgresRepository(db)
-		messageRepo := message.NewPostgresRepository(db)
+		messageRepo = message.NewPostgresRepository(db)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo)
@@ -77,5 +78,6 @@ func init() {
 	rootCmd.AddCommand(domainCmd)
 	rootCmd.AddCommand(mailboxCmd)
 	rootCmd.AddCommand(messageCmd)
+	rootCmd.AddCommand(storageCmd)
 	rootCmd.AddCommand(migrateCmd)
 }

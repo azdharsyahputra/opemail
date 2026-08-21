@@ -48,3 +48,8 @@ Under `FilesystemBlobStore`, blobs are sharded by their content SHA-256 hash pre
 - **Email/User Immutability**: Blobs are keyed by content hash, not email address. Changing a user's email address does not require reorganizing storage.
 - **Deduplication**: Identical payloads share storage space.
 - **Control Plane Separation**: OpenMail functions as the control plane for configuration and provisioning, integrating cleanly with downstream mail storage (e.g. Dovecot/Postfix).
+
+## Architectural Decision Records (ADRs)
+
+- [ADR 0001: Storage Consistency & Compensating Cleanup for Message Ingestion](adr/0001-storage-consistency-and-compensating-cleanup.md)
+

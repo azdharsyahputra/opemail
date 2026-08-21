@@ -162,6 +162,36 @@ func (s *FilesystemBlobStore) Exists(ctx context.Context, id string) (bool, erro
 	return true, nil
 }
 
+// ListIDs walks all sharded directories (excluding tmp/) and returns all existing blob IDs.
+func (s *FilesystemBlobStore) ListIDs(ctx context.Context) ([]string, error) {
+	var ids []string
+
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read storage base dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == "tmp" {
+			continue
+		}
+
+		subDir := filepath.Join(s.baseDir, entry.Name())
+		files, err := os.ReadDir(subDir)
+		if err != nil {
+			continue
+		}
+
+		for _, f := range files {
+			if !f.IsDir() && idRegex.MatchString(f.Name()) {
+				ids = append(ids, f.Name())
+			}
+		}
+	}
+
+	return ids, nil
+}
+
 func (s *FilesystemBlobStore) resolveBlobPath(id string) (string, error) {
 	if len(id) < 2 || !idRegex.MatchString(id) {
 		return "", ErrInvalidID
