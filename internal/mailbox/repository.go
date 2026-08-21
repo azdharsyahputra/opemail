@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,6 +15,8 @@ type Repository interface {
 	GetByEmail(ctx context.Context, email string) (*Mailbox, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*Mailbox, error)
 	List(ctx context.Context) ([]*Mailbox, error)
+	UpdateProvisioningStatus(ctx context.Context, id uuid.UUID, status string) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	Delete(ctx context.Context, email string) error
 }
 
@@ -27,10 +30,14 @@ func NewPostgresRepository(db *sql.DB) Repository {
 
 func (r *postgresRepository) Create(ctx context.Context, m *Mailbox) error {
 	query := `
-		INSERT INTO mailboxes (id, domain_id, email, password_hash, quota_bytes, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO mailboxes (id, domain_id, email, password_hash, quota_bytes, status, provisioning_status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
-	_, err := r.db.ExecContext(ctx, query, m.ID, m.DomainID, m.Email, m.PasswordHash, m.QuotaBytes, m.Status, m.CreatedAt, m.UpdatedAt)
+	if m.ProvisioningStatus == "" {
+		m.ProvisioningStatus = ProvisioningPending
+	}
+
+	_, err := r.db.ExecContext(ctx, query, m.ID, m.DomainID, m.Email, m.PasswordHash, m.QuotaBytes, m.Status, m.ProvisioningStatus, m.CreatedAt, m.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("repository create mailbox: %w", err)
 	}
@@ -39,14 +46,14 @@ func (r *postgresRepository) Create(ctx context.Context, m *Mailbox) error {
 
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		WHERE m.email = $1
 	`
 	m := &Mailbox{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -59,14 +66,14 @@ func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*Mai
 
 func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		WHERE m.id = $1
 	`
 	m := &Mailbox{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -79,7 +86,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Mailbo
 
 func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		ORDER BY m.created_at ASC
@@ -94,7 +101,7 @@ func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 	for rows.Next() {
 		m := &Mailbox{}
 		if err := rows.Scan(
-			&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+			&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 		); err != nil {
 			return nil, fmt.Errorf("repository scan mailbox: %w", err)
 		}
@@ -104,6 +111,38 @@ func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 		return nil, err
 	}
 	return mailboxes, nil
+}
+
+func (r *postgresRepository) UpdateProvisioningStatus(ctx context.Context, id uuid.UUID, status string) error {
+	query := `UPDATE mailboxes SET provisioning_status = $1, updated_at = $2 WHERE id = $3`
+	res, err := r.db.ExecContext(ctx, query, status, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository update provisioning status: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrMailboxNotFound
+	}
+	return nil
+}
+
+func (r *postgresRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	query := `UPDATE mailboxes SET status = $1, updated_at = $2 WHERE id = $3`
+	res, err := r.db.ExecContext(ctx, query, status, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository update status: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrMailboxNotFound
+	}
+	return nil
 }
 
 func (r *postgresRepository) Delete(ctx context.Context, email string) error {

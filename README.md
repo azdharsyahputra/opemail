@@ -1,6 +1,6 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL and pluggable Blob Storage.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL and Dovecot Maildir++ provisioning.
 
 ## Architecture
 
@@ -34,19 +34,25 @@ go build -o bin/mailopen ./cmd/mailopen
 ./bin/mailopen domain list
 ```
 
-#### Mailbox Management
+#### Mailbox Management & Provisioning (W2.3)
 ```bash
-# Create mailbox
+# Create mailbox (auto-provisions Dovecot Maildir++)
 ./bin/mailopen mailbox create ajar@example.com --password "secretPass123"
 
-# List mailboxes
+# List mailboxes with provisioning status
 ./bin/mailopen mailbox list
 
-# Delete mailbox
+# Retry / Trigger idempotent provisioning
+./bin/mailopen mailbox provision ajar@example.com
+
+# Run mailbox doctor to verify filesystem & ownership health
+./bin/mailopen mailbox doctor ajar@example.com
+
+# Delete mailbox (deprovisions Maildir and removes from DB)
 ./bin/mailopen mailbox delete ajar@example.com
 ```
 
-#### Message Management (Week 2)
+#### Storage & Message Management
 ```bash
 # Store raw email into mailbox
 cat email.eml | ./bin/mailopen message store ajar@example.com
@@ -57,8 +63,9 @@ cat email.eml | ./bin/mailopen message store ajar@example.com
 # Get message details and raw payload
 ./bin/mailopen message get <message-uuid>
 
-# Delete message
-./bin/mailopen message delete <message-uuid>
+# Run Garbage Collector for orphaned blobs
+./bin/mailopen storage gc --dry-run
+./bin/mailopen storage gc
 ```
 
 ## Running Tests

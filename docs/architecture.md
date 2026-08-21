@@ -13,18 +13,68 @@
     Domain Service       Mailbox Service       Message Service
           │                     │                     │
           │                     │              ┌──────┴──────┐
-          │                     │              ▼             ▼
-          │                     │          PostgreSQL    BlobStore
-          │                     │         (Metadata)     (Raw .eml)
-          └─────────────────────┼─────────────────────┘      │
-                                ▼                            ▼
-                            PostgreSQL                  Filesystem /
-                         (Domains, Mailboxes)           S3 / MinIO
+          │                     ▼              ▼             ▼
+          │             Provisioning Layer PostgreSQL    BlobStore
+          │                     │         (Metadata)     (Archive/Backup)
+          │                     ▼                            │
+          │            Dovecot Maildir++                     ▼
+          │             (/var/vmail/...)                Filesystem /
+          └─────────────────────┼────────────────────── S3 / MinIO
+                                ▼
+                            PostgreSQL
+                         (Domains, Mailboxes)
 ```
+
+## Mailbox Provisioning Architecture (W2.3)
+
+MailOpen serves as the **Control Plane** and manages mailbox provisioning and lifecycle, delegating mail access and live storage to **Dovecot**:
+
+```text
+                    MailOpen (Control Plane)
+                               │
+                        Mailbox Service
+                               │
+                       Provisioner Layer
+                               │
+                 ┌─────────────┴─────────────┐
+                 ▼                           ▼
+              Postfix                     Dovecot
+                 │                           │
+                 │                       Maildir++
+                 │                           │
+                 └─────────────┬─────────────┘
+                               ▼
+                        /var/vmail/...
+```
+
+### 1. Directory Structure (Dovecot Maildir++)
+```text
+/var/vmail/
+└── example.com/
+    └── ajar/
+        └── Maildir/
+            ├── cur/
+            ├── new/
+            └── tmp/
+```
+- **Permission**: `0750`
+- **Ownership**: `vmail:vmail` (UID: 5000, GID: 5000)
+- **RFC Path Derivation**: Calculated dynamically from `domain + normalized localpart`, guarded against path traversal. Not stored in DB.
+
+### 2. Provisioning States
+Mailboxes progress through explicit provisioning states in PostgreSQL:
+- `pending`: Registered in DB, awaiting filesystem/engine allocation.
+- `provisioning`: Provisioner actively creating directories/configurations.
+- `ready`: Maildir structure verified and ready for Dovecot.
+- `failed`: Provisioning error encountered; retryable via CLI.
+- `deprovisioning`: Pending filesystem cleanup.
+
+### 3. Mailbox Doctor
+Validates database record status, directory existence (`Maildir`, `cur`, `new`, `tmp`), filesystem permissions (`0750`), and process ownership (`vmail:vmail`).
 
 ## Storage Layer Abstraction (`internal/storage`)
 
-Raw email payloads (RFC 5322 `.eml`) are decoupled from database metadata and isolated behind the `BlobStore` interface:
+Raw email payloads (RFC 5322 `.eml`) for archival, backup, export, and S3 migration are decoupled behind `BlobStore`:
 
 ```go
 type BlobStore interface {
@@ -32,24 +82,10 @@ type BlobStore interface {
     Get(ctx context.Context, id string) (io.ReadCloser, error)
     Delete(ctx context.Context, id string) error
     Exists(ctx context.Context, id string) (bool, error)
+    ListIDs(ctx context.Context) ([]string, error)
 }
 ```
-
-### Prefix Sharding
-Under `FilesystemBlobStore`, blobs are sharded by their content SHA-256 hash prefix:
-```text
-/var/lib/openmail/blobs/
-├── c5/
-│   └── c54b79cdf07d6edb853acef044a6349b293632415ddc15cf9509bfc81beb04bd
-├── 7f/
-│   └── 7f9a...
-└── tmp/
-```
-- **Email/User Immutability**: Blobs are keyed by content hash, not email address. Changing a user's email address does not require reorganizing storage.
-- **Deduplication**: Identical payloads share storage space.
-- **Control Plane Separation**: OpenMail functions as the control plane for configuration and provisioning, integrating cleanly with downstream mail storage (e.g. Dovecot/Postfix).
 
 ## Architectural Decision Records (ADRs)
 
 - [ADR 0001: Storage Consistency & Compensating Cleanup for Message Ingestion](adr/0001-storage-consistency-and-compensating-cleanup.md)
-

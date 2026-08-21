@@ -10,6 +10,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
+	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/storage"
 	"github.com/spf13/cobra"
 )
@@ -49,12 +50,17 @@ var rootCmd = &cobra.Command{
 		}
 		blobStore = bs
 
+		prov, err := provisioning.NewFilesystemProvisioner(cfg.VmailRoot, cfg.VmailUID, cfg.VmailGID)
+		if err != nil {
+			return fmt.Errorf("failed to initialize vmail provisioner (%s): %w", cfg.VmailRoot, err)
+		}
+
 		domainRepo := domain.NewPostgresRepository(db)
 		mailboxRepo := mailbox.NewPostgresRepository(db)
 		messageRepo = message.NewPostgresRepository(db)
 
 		domainService = domain.NewService(domainRepo)
-		mailboxService = mailbox.NewService(mailboxRepo, domainRepo)
+		mailboxService = mailbox.NewService(mailboxRepo, domainRepo, prov)
 		messageService = message.NewService(messageRepo, mailboxRepo, blobStore)
 
 		return nil

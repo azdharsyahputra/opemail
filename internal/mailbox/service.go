@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/azdharsyahputra/openmail/internal/domain"
+	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/argon2"
 )
@@ -34,6 +35,8 @@ var DefaultArgon2Params = Argon2Params{
 
 type Service interface {
 	Create(ctx context.Context, email, password string, quotaBytes int64) (*Mailbox, error)
+	Provision(ctx context.Context, email string) (*Mailbox, bool, error)
+	Doctor(ctx context.Context, email string) (*provisioning.DoctorReport, error)
 	GetByEmail(ctx context.Context, email string) (*Mailbox, error)
 	List(ctx context.Context) ([]*Mailbox, error)
 	Delete(ctx context.Context, email string) error
@@ -43,12 +46,14 @@ type Service interface {
 type service struct {
 	mailboxRepo Repository
 	domainRepo  domain.Repository
+	provisioner provisioning.Provisioner
 }
 
-func NewService(mailboxRepo Repository, domainRepo domain.Repository) Service {
+func NewService(mailboxRepo Repository, domainRepo domain.Repository, provisioner provisioning.Provisioner) Service {
 	return &service{
 		mailboxRepo: mailboxRepo,
 		domainRepo:  domainRepo,
+		provisioner: provisioner,
 	}
 }
 
@@ -103,22 +108,110 @@ func (s *service) Create(ctx context.Context, email, password string, quotaBytes
 
 	now := time.Now().UTC()
 	m := &Mailbox{
-		ID:           uuid.New(),
-		DomainID:     dom.ID,
-		Email:        email,
-		PasswordHash: hashedPassword,
-		QuotaBytes:   quotaBytes,
-		Status:       "active",
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		DomainName:   dom.Name,
+		ID:                 uuid.New(),
+		DomainID:           dom.ID,
+		Email:              email,
+		PasswordHash:       hashedPassword,
+		QuotaBytes:         quotaBytes,
+		Status:             "active",
+		ProvisioningStatus: ProvisioningPending,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+		DomainName:         dom.Name,
 	}
 
+	// 7. Save mailbox to DB
 	if err := s.mailboxRepo.Create(ctx, m); err != nil {
 		return nil, err
 	}
 
+	// 8. Provision mailbox via Provisioner layer (if provisioner configured)
+	if s.provisioner != nil {
+		_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, m.ID, ProvisioningInProgress)
+
+		provErr := s.provisioner.Provision(ctx, provisioning.Mailbox{
+			ID:         m.ID.String(),
+			Email:      m.Email,
+			Domain:     dom.Name,
+			QuotaBytes: m.QuotaBytes,
+		})
+
+		if provErr != nil {
+			// Mark as failed in DB and compensate/clean up if needed
+			_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, m.ID, ProvisioningFailed)
+			return nil, fmt.Errorf("mailbox provisioning failed: %w", provErr)
+		}
+
+		m.ProvisioningStatus = ProvisioningReady
+		_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, m.ID, ProvisioningReady)
+	}
+
 	return m, nil
+}
+
+func (s *service) Provision(ctx context.Context, email string) (*Mailbox, bool, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if mb.ProvisioningStatus == ProvisioningReady {
+		return mb, true, nil
+	}
+
+	if s.provisioner == nil {
+		return mb, false, fmt.Errorf("provisioner not configured")
+	}
+
+	_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, ProvisioningInProgress)
+
+	err = s.provisioner.Provision(ctx, provisioning.Mailbox{
+		ID:         mb.ID.String(),
+		Email:      mb.Email,
+		Domain:     mb.DomainName,
+		QuotaBytes: mb.QuotaBytes,
+	})
+	if err != nil {
+		_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, ProvisioningFailed)
+		return nil, false, fmt.Errorf("failed to provision mailbox: %w", err)
+	}
+
+	mb.ProvisioningStatus = ProvisioningReady
+	_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, ProvisioningReady)
+
+	return mb, false, nil
+}
+
+func (s *service) Doctor(ctx context.Context, email string) (*provisioning.DoctorReport, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.provisioner == nil {
+		return nil, fmt.Errorf("provisioner not configured")
+	}
+
+	report, err := s.provisioner.Inspect(ctx, provisioning.Mailbox{
+		ID:         mb.ID.String(),
+		Email:      mb.Email,
+		Domain:     mb.DomainName,
+		QuotaBytes: mb.QuotaBytes,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	report.Status = mb.Status
+	report.ProvisionStatus = mb.ProvisioningStatus
+
+	if mb.ProvisioningStatus != ProvisioningReady || mb.Status != "active" {
+		report.Healthy = false
+	}
+
+	return report, nil
 }
 
 func (s *service) GetByEmail(ctx context.Context, email string) (*Mailbox, error) {
@@ -138,6 +231,26 @@ func (s *service) Delete(ctx context.Context, email string) error {
 	if email == "" {
 		return ErrInvalidEmail
 	}
+
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	// 1. Mark as deprovisioning / deleting
+	_ = s.mailboxRepo.UpdateStatus(ctx, mb.ID, "deleting")
+	_ = s.mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, ProvisioningDeprovisioning)
+
+	// 2. Clean up filesystem
+	if s.provisioner != nil {
+		_ = s.provisioner.Deprovision(ctx, provisioning.Mailbox{
+			ID:     mb.ID.String(),
+			Email:  mb.Email,
+			Domain: mb.DomainName,
+		})
+	}
+
+	// 3. Delete from DB
 	return s.mailboxRepo.Delete(ctx, email)
 }
 

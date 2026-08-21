@@ -57,9 +57,34 @@ func (m *mockMailboxRepo) List(ctx context.Context) ([]*mailbox.Mailbox, error) 
 	return nil, nil
 }
 
+func (m *mockMailboxRepo) UpdateProvisioningStatus(ctx context.Context, id uuid.UUID, status string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mb := range m.mailboxes {
+		if mb.ID == id {
+			mb.ProvisioningStatus = status
+			return nil
+		}
+	}
+	return mailbox.ErrMailboxNotFound
+}
+
+func (m *mockMailboxRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mb := range m.mailboxes {
+		if mb.ID == id {
+			mb.Status = status
+			return nil
+		}
+	}
+	return mailbox.ErrMailboxNotFound
+}
+
 func (m *mockMailboxRepo) Delete(ctx context.Context, email string) error {
 	return nil
 }
+
 
 type mockMessageRepo struct {
 	mu       sync.Mutex
