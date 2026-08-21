@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS mailbox_limits (
+    mailbox_id UUID PRIMARY KEY REFERENCES mailboxes(id) ON DELETE CASCADE,
+    messages_per_minute INTEGER NOT NULL DEFAULT 30,
+    messages_per_hour INTEGER NOT NULL DEFAULT 300,
+    recipients_per_day INTEGER NOT NULL DEFAULT 1000,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

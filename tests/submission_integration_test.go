@@ -55,7 +55,7 @@ func TestIntegration_Submission(t *testing.T) {
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
 	}
-	defer database.DropAllTables(db)
+
 
 	tempVmailDir, err := os.MkdirTemp("", "openmail-submission-vmail-*")
 	if err != nil {

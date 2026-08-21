@@ -214,7 +214,9 @@ func (r *PostgresRepository) RevokeDKIMKey(ctx context.Context, id uuid.UUID) er
 
 func (r *PostgresRepository) GetPolicy(ctx context.Context, domainID uuid.UUID) (*DomainMailPolicy, error) {
 	query := `
-		SELECT p.domain_id, d.name, p.spf_policy, p.dmarc_policy, p.created_at, p.updated_at
+		SELECT p.domain_id, d.name, p.spf_policy, p.dmarc_policy,
+		       p.spam_threshold, p.reject_threshold, p.quarantine_enabled, p.max_message_size,
+		       p.rbl_policy, p.rdns_policy, p.created_at, p.updated_at
 		FROM domain_mail_policy p
 		JOIN domains d ON d.id = p.domain_id
 		WHERE p.domain_id = $1;
@@ -225,6 +227,12 @@ func (r *PostgresRepository) GetPolicy(ctx context.Context, domainID uuid.UUID) 
 		&p.Domain,
 		&p.SPFPolicy,
 		&p.DMARCPolicy,
+		&p.SpamThreshold,
+		&p.RejectThreshold,
+		&p.QuarantineEnabled,
+		&p.MaxMessageSize,
+		&p.RBLPolicy,
+		&p.RDNSPolicy,
 		&p.CreatedAt,
 		&p.UpdatedAt,
 	)
@@ -239,16 +247,36 @@ func (r *PostgresRepository) GetPolicy(ctx context.Context, domainID uuid.UUID) 
 
 func (r *PostgresRepository) UpsertPolicy(ctx context.Context, policy *DomainMailPolicy) error {
 	query := `
-		INSERT INTO domain_mail_policy (domain_id, spf_policy, dmarc_policy, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
+		INSERT INTO domain_mail_policy (
+			domain_id, spf_policy, dmarc_policy, spam_threshold, reject_threshold,
+			quarantine_enabled, max_message_size, rbl_policy, rdns_policy, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
 		ON CONFLICT (domain_id) DO UPDATE
 		SET spf_policy = EXCLUDED.spf_policy,
 		    dmarc_policy = EXCLUDED.dmarc_policy,
+		    spam_threshold = EXCLUDED.spam_threshold,
+		    reject_threshold = EXCLUDED.reject_threshold,
+		    quarantine_enabled = EXCLUDED.quarantine_enabled,
+		    max_message_size = EXCLUDED.max_message_size,
+		    rbl_policy = EXCLUDED.rbl_policy,
+		    rdns_policy = EXCLUDED.rdns_policy,
 		    updated_at = NOW();
 	`
-	_, err := r.db.ExecContext(ctx, query, policy.DomainID, policy.SPFPolicy, policy.DMARCPolicy)
+	_, err := r.db.ExecContext(ctx, query,
+		policy.DomainID,
+		policy.SPFPolicy,
+		policy.DMARCPolicy,
+		policy.SpamThreshold,
+		policy.RejectThreshold,
+		policy.QuarantineEnabled,
+		policy.MaxMessageSize,
+		policy.RBLPolicy,
+		policy.RDNSPolicy,
+	)
 	if err != nil {
 		return fmt.Errorf("upsert domain mail policy: %w", err)
 	}
 	return nil
 }
+

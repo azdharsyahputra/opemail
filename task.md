@@ -1,96 +1,90 @@
-# W2.8 — Mail Identity, DKIM Signing, SPF & DMARC
+# W2.9 — Inbound Mail Security & Anti-Abuse
 
 ## 0. Target Architecture
 
 ```text
                          INTERNET
                             │
-             ┌──────────────┴──────────────┐
-             │                             │
-          INBOUND                       OUTBOUND
-             │                             │
-             ▼                             ▼
-        Postfix :25                  Postfix :587
-             │                             │
-             │                         STARTTLS
-             │                             │
-             │                         SMTP AUTH
-             │                             │
-             │                             ▼
-             │                       Outbound Queue
-             │                             │
-             │                             ▼
-             │                         OpenDKIM (milter)
-             │                             │
-             │                       DKIM Signature (d=example.com, s=mailopen2026)
-             │                             │
-             └──────────────┬──────────────┘
+                            │ TCP :25
+                            ▼
+                  ┌──────────────────┐
+                  │     Postfix      │
+                  │   SMTP Receive   │
+                  └─────────┬────────┘
+                            │
+                            ├── Connection controls (:25 limits)
+                            ├── HELO/EHLO validation
+                            ├── Client & Recipient validation (PostgreSQL)
+                            ├── Rate limiting & Anti-abuse controls
+                            ├── RBL / DNSBL & Reverse DNS (PTR/FCrDNS)
+                            ├── SPF evaluation (RFC 7208)
+                            ├── DKIM verification (RFC 6376)
+                            └── DMARC evaluation & alignment (RFC 7489)
                             │
                             ▼
-                         Internet
+                  ┌──────────────────┐
+                  │ Content Pipeline │
+                  └─────────┬────────┘
                             │
-                 ┌──────────┼──────────┐
-                 ▼          ▼          ▼
-                SPF       DKIM       DMARC
+                            ├── Spam evaluation (Rspamd / scoring)
+                            ├── Antivirus scanning (ClamAV / malware)
+                            ├── Header injection (Authentication-Results, Received-SPF)
+                            ├── Oversized message rejection (message_size_limit)
+                            ├── Quarantine / Junk routing
+                            │
+                            ▼
+                       Maildir/new/
+                            │
+                            ▼
+                         Dovecot
 ```
 
-MailOpen Control Plane:
-- **Domain**: SPF policy, DKIM selector, DMARC policy
-- **DKIM Key Manager**: Generate, rotate, activate, revoke
-- **DNS Verification & Doctor**: SPF, DKIM, DMARC
+Control Plane vs Data Plane:
+- **Control Plane (MailOpen)**: Policy configurations, thresholds, mailbox limits, diagnostic doctors.
+- **Data Plane (Postfix, Dovecot, OpenDKIM, Rspamd, ClamAV)**: Real-time network and mail processing.
+- **Runtime State**: Dynamic lookups and memory counters (Redis / in-memory rate limiters).
+- **Secrets & Storage**: Filesystem Maildir, TLS certs, DKIM private keys.
 
 ---
 
 ## 1. Definition of Done Checklist
 
-- [ ] **W2.8.1 DKIM Domain Model + Database Migrations**
-  - [ ] Migration `000006_dkim.up.sql` (tables `domain_dkim` & `domain_mail_policy`)
-  - [ ] Migration `000006_dkim.down.sql`
-  - [ ] Model `DKIMKey`, `DKIMStatus` (pending, active, revoked), `DomainMailPolicy`
-  - [ ] Repository interface and PostgreSQL implementation
-- [ ] **W2.8.2 Secure DKIM Keystore**
-  - [ ] Storage path `/etc/mailopen/dkim/<domain>/<selector>/private.key` (NOT in PostgreSQL)
-  - [ ] Directory permissions `0750`, private key permissions `0600`
-  - [ ] Atomic private key installation (`.tmp` -> `fsync` -> `chmod 0600` -> `rename`)
-- [ ] **W2.8.3 RSA-2048 Key Generation & Public DNS Record**
-  - [ ] Cryptographic RSA-2048 generation
-  - [ ] Base64 DER public key extraction
-  - [ ] DNS TXT format `v=DKIM1; k=rsa; p=PUBLIC_KEY`
-- [ ] **W2.8.4 Selector Validation & Lifecycle**
-  - [ ] Selector format validation `^[a-z0-9][a-z0-9._-]{0,62}$` (rejects path traversal `../`)
-  - [ ] Lifecycle: generate -> pending -> DNS verified -> active -> rotated -> revoked
-- [ ] **W2.8.5 OpenDKIM Provisioning & Milter Integration**
-  - [ ] OpenDKIM config generator (`opendkim.conf`, `KeyTable`, `SigningTable`, `TrustedHosts`)
-  - [ ] Unix socket `/var/spool/postfix/private/opendkim`
-  - [ ] Postfix `smtpd_milters` & `non_smtpd_milters` integration
-- [ ] **W2.8.6 SPF & DMARC Policies**
-  - [ ] SPF policy generator & syntax validator (`v=spf1 ...`)
-  - [ ] DMARC policy generator & syntax validator (`v=DMARC1; p=none ...`)
-  - [ ] Domain mail policy persistence in PostgreSQL
-- [ ] **W2.8.7 DNS Verification & Domain Doctor**
-  - [ ] DKIM DNS verification against local public key
-  - [ ] SPF DNS verification
-  - [ ] DMARC DNS verification
-  - [ ] `mailopen domain doctor <domain>` comprehensive report
-- [ ] **W2.8.8 CLI Subcommands**
-  - [ ] `mailopen dkim key generate <domain>`
-  - [ ] `mailopen dkim key list <domain>`
-  - [ ] `mailopen dkim key activate <domain> <selector>`
-  - [ ] `mailopen dkim key revoke <domain> <selector>`
-  - [ ] `mailopen dkim verify <domain>`
-  - [ ] `mailopen dkim doctor <domain>`
-  - [ ] `mailopen domain spf show / set / verify <domain>`
-  - [ ] `mailopen domain dmarc show / set / verify <domain>`
-  - [ ] `mailopen domain doctor <domain>`
-  - [ ] `mailopen postfix dkim status`
-- [ ] **W2.8.9 Test Matrices & E2E Outbound DKIM Signing**
-  - [ ] Unit tests for keygen, keystore, selector validation, SPF/DMARC parsers
-  - [ ] `tests/dkim_integration_test.go`:
-    - [ ] Keygen & keystore file permissions (`0600`/`0750`)
-    - [ ] OpenDKIM milter signing on :587 submission
-    - [ ] Raw message contains valid `DKIM-Signature` (`d=`, `s=`, `a=rsa-sha256`)
-    - [ ] Sender authorization integration
-    - [ ] Key rotation & revocation safety
-  - [ ] `tests/dns_integration_test.go`:
-    - [ ] SPF & DMARC validation
-    - [ ] Domain Doctor report
+- [ ] **W2.9.1 Database Migrations for Mail Policy & Mailbox Limits**
+  - [ ] Migration `000007_mail_policy.up.sql` (spam_threshold, reject_threshold, quarantine, size_limit, rbl_policy)
+  - [ ] Migration `000008_mailbox_limits.up.sql` (outbound rate limits per mailbox)
+  - [ ] Models & PostgreSQL repositories
+- [ ] **W2.9.2 Inbound Security & Policy Engine (`internal/inbound/`)**
+  - [ ] Recipient validation without enumeration leakage (unknown & suspended both return consistent 550)
+  - [ ] HELO/EHLO validation & Postfix connection controls
+  - [ ] SPF inbound evaluation (pass, fail, softfail, neutral, none, temperror, permerror)
+  - [ ] DKIM inbound verification (pass, fail, none, neutral)
+  - [ ] DMARC alignment evaluation (SPF aligned OR DKIM aligned)
+  - [ ] DMARC policy enforcement (none, quarantine, reject)
+  - [ ] Header generation & injection (`Authentication-Results:`, `Received-SPF:`)
+  - [ ] Reverse DNS & RBL reputation policies
+- [ ] **W2.9.3 Spam & Antivirus Pipelines (`internal/spam/`, `internal/antivirus/`)**
+  - [ ] Spam scoring thresholds & quarantine policy
+  - [ ] Antivirus scanner integration & malware detection
+  - [ ] Message size limit enforcement
+- [ ] **W2.9.4 Abuse & Rate Limiting Engine (`internal/abuse/`)**
+  - [ ] Outbound authenticated user limits (messages/min, messages/hr, recipients/day)
+  - [ ] IP connection burst & rate limit tracking
+- [ ] **W2.9.5 Postfix & Milter Inbound Hardening**
+  - [ ] Postfix `main.cf`: connection, message, recipient rate limits, `message_size_limit`, HELO restrictions
+- [ ] **W2.9.6 CLI Subcommands**
+  - [ ] `mailopen inbound doctor`
+  - [ ] `mailopen inbound policy show / set <domain>`
+  - [ ] `mailopen inbound test smtp / spf / dkim / dmarc`
+  - [ ] `mailopen spam status / doctor`
+  - [ ] `mailopen antivirus status / doctor`
+  - [ ] `mailopen abuse status / limits show / limits set`
+  - [ ] `mailopen domain doctor <domain>` (full comprehensive 24-point check)
+- [ ] **W2.9.7 Test Matrices & Full Integration**
+  - [ ] Inbound recipient validation test
+  - [ ] SMTP connection limit test
+  - [ ] SPF inbound evaluation test matrix
+  - [ ] DKIM inbound verification test matrix
+  - [ ] DMARC alignment & policy test matrix
+  - [ ] Spam & antivirus detection test matrix
+  - [ ] Outbound abuse rate limit test
+  - [ ] Regression test across W2.1 - W2.9 (`go test -count=1 -v ./...`)

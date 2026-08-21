@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/azdharsyahputra/openmail/internal/abuse"
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/database"
 	"github.com/azdharsyahputra/openmail/internal/dkim"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/dovecot"
-
+	"github.com/azdharsyahputra/openmail/internal/inbound"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
 	"github.com/azdharsyahputra/openmail/internal/postfix"
@@ -32,6 +33,9 @@ var (
 	dovecotService dovecot.Service
 	dkimRepo       dkim.Repository
 	dkimService    dkim.Service
+	inboundService inbound.Service
+	abuseRepo      abuse.Repository
+	abuseService   abuse.Service
 )
 
 var rootCmd = &cobra.Command{
@@ -71,6 +75,7 @@ var rootCmd = &cobra.Command{
 		postfixRepo = postfix.NewPostgresRepository(db)
 		dovecotRepo = dovecot.NewPostgresRepository(db)
 		dkimRepo = dkim.NewPostgresRepository(db)
+		abuseRepo = abuse.NewPostgresRepository(db)
 
 		postfixProv := postfix.NewSystemProvisioner(cfg.PostfixConfigDir)
 		postfixService = postfix.NewService(postfixRepo, postfixProv)
@@ -80,6 +85,9 @@ var rootCmd = &cobra.Command{
 
 		dkimKeystore := dkim.NewFilesystemKeystore(cfg.DKIMBaseDir)
 		dkimService = dkim.NewService(dkimRepo, domainRepo, dkimKeystore)
+
+		inboundService = inbound.NewService(db, dkimService)
+		abuseService = abuse.NewService(abuseRepo, mailboxRepo)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo, prov)
@@ -112,6 +120,11 @@ func init() {
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(tlsCmd)
 	rootCmd.AddCommand(dkimCmd)
+	rootCmd.AddCommand(inboundCmd)
+	rootCmd.AddCommand(spamCmd)
+	rootCmd.AddCommand(antivirusCmd)
+	rootCmd.AddCommand(abuseCmd)
 }
+
 
 

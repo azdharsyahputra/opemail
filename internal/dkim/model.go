@@ -41,13 +41,20 @@ type DKIMKey struct {
 }
 
 type DomainMailPolicy struct {
-	DomainID    uuid.UUID `json:"domain_id"`
-	Domain      string    `json:"domain,omitempty"`
-	SPFPolicy   string    `json:"spf_policy"`
-	DMARCPolicy string    `json:"dmarc_policy"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	DomainID          uuid.UUID `json:"domain_id"`
+	Domain            string    `json:"domain,omitempty"`
+	SPFPolicy         string    `json:"spf_policy"`
+	DMARCPolicy       string    `json:"dmarc_policy"`
+	SpamThreshold     float64   `json:"spam_threshold"`
+	RejectThreshold   float64   `json:"reject_threshold"`
+	QuarantineEnabled bool      `json:"quarantine_enabled"`
+	MaxMessageSize    int64     `json:"max_message_size"`
+	RBLPolicy         string    `json:"rbl_policy"`
+	RDNSPolicy        string    `json:"rdns_policy"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
+
 
 type Keypair struct {
 	PrivateKeyPEM []byte `json:"-"`

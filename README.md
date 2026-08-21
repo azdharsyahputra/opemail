@@ -1,6 +1,6 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, and Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening and native Maildir++ storage.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening, Inbound Security, Spam/Antivirus filtering, Outbound submission rate limits, and native Maildir++ storage.
 
 ## Architecture
 
@@ -14,26 +14,26 @@
              ▼                             ▼
         Postfix :25                  Postfix :587
              │                             │
-             │                         STARTTLS (Mandatory)
+             ├── Connection Controls       ├── STARTTLS (Mandatory)
+             ├── HELO/EHLO Validation      ├── SMTP AUTH (Dovecot SASL)
+             ├── Recipient Validation      ├── Outbound Rate Limits
+             ├── SPF Inbound Evaluation    │
+             ├── DKIM Inbound Verification ▼
+             ├── DMARC Alignment Check  OpenDKIM Milter Signing
              │                             │
-             │                         SMTP AUTH (Dovecot SASL)
-             │                             │
-             │                             ▼
-             │                       Outbound Queue
-             │                             │
-             │                             ▼
-             │                         OpenDKIM (Milter)
-             │                             │
-             │                       DKIM Signature (d=example.com, s=mailopen2026)
-             │                             │
-             └──────────────┬──────────────┘
-                            │
-                            ▼
-                         Internet
-                            │
-                 ┌──────────┼──────────┐
-                 ▼          ▼          ▼
-                SPF       DKIM       DMARC
+             ▼                             ▼
+        Rspamd & ClamAV                 Internet
+        (Spam & Antivirus)
+             │
+             ├── Header Injection
+             │   (Authentication-Results, Received-SPF)
+             ├── Quarantine / Junk
+             │
+             ▼
+        Maildir/new/
+             │
+             ▼
+          Dovecot
 ```
 
 Client Configuration:
@@ -61,6 +61,31 @@ go build -o bin/mailopen ./cmd/mailopen
 ```
 
 ### 4. CLI Usage Examples
+
+#### Inbound Mail Security & Abuse Controls (W2.9)
+```bash
+# Run comprehensive Inbound Security Doctor
+./bin/mailopen inbound doctor
+
+# Simulate real-time inbound SPF evaluation
+./bin/mailopen inbound test spf 203.0.113.10 sender.com "v=spf1 ip4:203.0.113.10 -all"
+
+# Simulate real-time inbound DMARC alignment & policy verdict
+./bin/mailopen inbound test dmarc user@example.com pass example.com fail evil.com reject
+
+# Check Spam filtering (Rspamd) engine status & thresholds
+./bin/mailopen spam status
+./bin/mailopen spam doctor
+
+# Check Antivirus scanning (ClamAV) engine status
+./bin/mailopen antivirus status
+./bin/mailopen antivirus doctor
+
+# Check abuse protection status & manage mailbox submission rate limits
+./bin/mailopen abuse status
+./bin/mailopen abuse limits show ajar@example.com
+./bin/mailopen abuse limits set ajar@example.com --msgs-per-min 20 --msgs-per-hour 200 --rcpt-per-day 800
+```
 
 #### Mail Identity, DKIM, SPF & DMARC (W2.8)
 ```bash
@@ -223,5 +248,5 @@ cat email.eml | ./bin/mailopen message store ajar@example.com
 ## Running Tests
 
 ```bash
-go test -v ./...
+DATABASE_URL="postgres://mailopen:mailopen@localhost:5433/mailopen?sslmode=disable" go test -count=1 -v ./...
 ```

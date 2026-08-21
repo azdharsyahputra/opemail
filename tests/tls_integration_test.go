@@ -12,8 +12,15 @@ import (
 	"time"
 
 
+	"github.com/azdharsyahputra/openmail/internal/config"
+	"github.com/azdharsyahputra/openmail/internal/database"
+	"github.com/azdharsyahputra/openmail/internal/domain"
+	"github.com/azdharsyahputra/openmail/internal/mailbox"
+	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
+	"github.com/google/uuid"
 )
+
 
 
 func TestIntegration_TLS(t *testing.T) {
@@ -25,9 +32,35 @@ func TestIntegration_TLS(t *testing.T) {
 	}
 	_ = conn993.Close()
 
+	dbURL := os.Getenv("DATABASE_URL")
+
+	if dbURL == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DatabaseURL != "" {
+			dbURL = cfg.DatabaseURL
+		} else {
+			dbURL = "postgres://mailopen:mailopen@localhost:5433/mailopen?sslmode=disable"
+		}
+	}
+
+	if db, err := database.NewPostgresDB(dbURL); err == nil {
+		defer db.Close()
+		_ = database.RunMigrationsUp(db)
+		domainRepo := domain.NewPostgresRepository(db)
+		mailboxRepo := mailbox.NewPostgresRepository(db)
+		prov, _ := provisioning.NewFilesystemProvisioner(os.TempDir(), 5000, 5000)
+		mbSvc := mailbox.NewService(mailboxRepo, domainRepo, prov)
+		ctx := context.Background()
+		_ = domainRepo.Create(ctx, &domain.Domain{ID: uuid.New(), Name: "example.com", Status: "active"})
+		_ = mbSvc.SetPassword(ctx, "ajar@example.com", "SecurePass123")
+		_, _ = mbSvc.Create(ctx, "ajar@example.com", "SecurePass123", 1073741824)
+		_, _ = mbSvc.Create(ctx, "bob@example.com", "SecurePass123", 1073741824)
+	}
+
 	insecureTLS := &tls.Config{
 		InsecureSkipVerify: true,
 	}
+
 
 	// 2. Test TLS Protocol Versions on IMAPS (:993)
 	t.Run("TLS Matrix: TLS 1.2 Handshake -> PASS", func(t *testing.T) {
