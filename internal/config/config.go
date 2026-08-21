@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	DatabaseURL string
+	StoragePath string
 }
 
 func Load() (*Config, error) {
@@ -19,7 +20,13 @@ func Load() (*Config, error) {
 		dbURL = "postgres://mailopen:mailopen@localhost:5432/mailopen?sslmode=disable"
 	}
 
+	storagePath := os.Getenv("STORAGE_PATH")
+	if storagePath == "" {
+		storagePath = "./data/blobs"
+	}
+
 	return &Config{
 		DatabaseURL: dbURL,
+		StoragePath: storagePath,
 	}, nil
 }

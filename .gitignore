@@ -22,4 +22,8 @@ bin/
 # Environment files
 .env
 
+# Data and storage files
+data/
+
+
 

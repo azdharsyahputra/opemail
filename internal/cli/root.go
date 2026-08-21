@@ -9,6 +9,8 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/database"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
+	"github.com/azdharsyahputra/openmail/internal/message"
+	"github.com/azdharsyahputra/openmail/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +18,8 @@ var (
 	db             *sql.DB
 	domainService  domain.Service
 	mailboxService mailbox.Service
+	blobStore      storage.BlobStore
+	messageService message.Service
 )
 
 var rootCmd = &cobra.Command{
@@ -38,11 +42,19 @@ var rootCmd = &cobra.Command{
 		}
 		db = databaseConn
 
+		bs, err := storage.NewFilesystemBlobStore(cfg.StoragePath)
+		if err != nil {
+			return fmt.Errorf("failed to initialize blob store (%s): %w", cfg.StoragePath, err)
+		}
+		blobStore = bs
+
 		domainRepo := domain.NewPostgresRepository(db)
 		mailboxRepo := mailbox.NewPostgresRepository(db)
+		messageRepo := message.NewPostgresRepository(db)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo)
+		messageService = message.NewService(messageRepo, mailboxRepo, blobStore)
 
 		return nil
 	},
@@ -64,5 +76,6 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(domainCmd)
 	rootCmd.AddCommand(mailboxCmd)
+	rootCmd.AddCommand(messageCmd)
 	rootCmd.AddCommand(migrateCmd)
 }

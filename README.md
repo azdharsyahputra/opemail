@@ -1,6 +1,6 @@
-# mailopen
+# openmail
 
-`mailopen` is a modular, high-performance mail server management CLI built in Go and backed by PostgreSQL.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL and pluggable Blob Storage.
 
 ## Architecture
 
@@ -44,6 +44,21 @@ go build -o bin/mailopen ./cmd/mailopen
 
 # Delete mailbox
 ./bin/mailopen mailbox delete ajar@example.com
+```
+
+#### Message Management (Week 2)
+```bash
+# Store raw email into mailbox
+cat email.eml | ./bin/mailopen message store ajar@example.com
+
+# List messages in mailbox
+./bin/mailopen message list ajar@example.com
+
+# Get message details and raw payload
+./bin/mailopen message get <message-uuid>
+
+# Delete message
+./bin/mailopen message delete <message-uuid>
 ```
 
 ## Running Tests
