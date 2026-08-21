@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/api/response"
@@ -134,12 +136,17 @@ func (h *DomainHandler) Doctor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
-	domName := chi.URLParam(r, "domain")
+	domName := parseEmailParam(r, "domain")
 	pol, _ := h.dkimService.GetPolicy(r.Context(), domName)
 	dkimRec, _ := h.dkimService.GetDNSRecord(r.Context(), domName, "default")
 
-	spfVal := "v=spf1 mx ~all"
-	dmarcVal := "v=DMARC1; p=none"
+	serverIP := os.Getenv("SERVER_IP")
+	if serverIP == "" {
+		serverIP = "157.20.254.39"
+	}
+
+	spfVal := fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP)
+	dmarcVal := fmt.Sprintf("v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@%s", domName)
 	if pol != nil {
 		if pol.SPFPolicy != "" {
 			spfVal = pol.SPFPolicy
@@ -151,6 +158,11 @@ func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 
 	recs := map[string]interface{}{
 		"domain": domName,
+		"a": map[string]interface{}{
+			"type":  "A",
+			"host":  "mail",
+			"value": serverIP,
+		},
 		"mx": map[string]interface{}{
 			"type":     "MX",
 			"host":     "@",
@@ -164,7 +176,7 @@ func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 		},
 		"dmarc": map[string]string{
 			"type":  "TXT",
-			"host":  "_dmarc." + domName,
+			"host":  "_dmarc",
 			"value": dmarcVal,
 		},
 		"dkim": dkimRec,
