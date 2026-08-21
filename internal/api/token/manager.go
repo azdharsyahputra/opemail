@@ -170,8 +170,11 @@ func (m *manager) RefreshTokens(ctx context.Context, rawRefreshToken string) (*T
 	}
 
 	if tok.RevokedAt != nil {
+		// Security Alert: Revoked token reuse detected! Revoke entire token family for this account.
+		_ = m.repo.RevokeAllForEmail(ctx, tok.Email)
 		return nil, ErrTokenRevoked
 	}
+
 
 	if time.Now().UTC().After(tok.ExpiresAt) {
 		return nil, ErrTokenExpired

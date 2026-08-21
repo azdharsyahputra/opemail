@@ -320,17 +320,18 @@ func TestREST_API_Authentication(t *testing.T) {
 		}
 	})
 
-	t.Run("AUTH-API-003: Suspended User -> 403 Forbidden", func(t *testing.T) {
+	t.Run("AUTH-API-003: Suspended User -> 401 Unauthorized (Anti-Enumeration)", func(t *testing.T) {
 		_ = rig.mbSvc.Suspend(ctx, mb.ID)
 		resp, _, _ := rig.doRequest("POST", "/api/v1/auth/login", "", map[string]string{
 			"username": userEmail,
 			"password": userPass,
 		})
-		if resp.StatusCode != http.StatusForbidden {
-			t.Errorf("expected 403 for suspended user, got: %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("expected 401 for suspended user, got: %d", resp.StatusCode)
 		}
 		_ = rig.mbSvc.Resume(ctx, mb.ID)
 	})
+
 
 	t.Run("AUTH-API-007 & 008: Refresh Token Rotation and Replay Protection", func(t *testing.T) {
 		// Login

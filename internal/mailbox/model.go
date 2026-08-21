@@ -34,9 +34,11 @@ type Mailbox struct {
 	UsedBytes          int64     `json:"used_bytes"`
 	Status             string    `json:"status"`
 	ProvisioningStatus string    `json:"provisioning_status"`
+	IdentityProvider   string    `json:"identity_provider,omitempty"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 
 	// Helper field for display in list / CLI
 	DomainName string `json:"domain_name,omitempty"`
 }
+

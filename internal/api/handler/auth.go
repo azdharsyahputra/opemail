@@ -47,17 +47,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Authenticate against identity service (multi-provider + gatekeeper)
 	ident, err := h.identService.Authenticate(r.Context(), req.Username, req.Password)
 	if err != nil {
-		if err == identity.ErrAccountSuspended {
-			response.Error(w, r, http.StatusForbidden, response.ErrCodeAccountSuspended, "account is suspended", nil)
-			return
-		}
-		if err == identity.ErrAccountDisabled {
-			response.Error(w, r, http.StatusForbidden, response.ErrCodeAccountDisabled, "account is disabled", nil)
-			return
-		}
+		// Unified error message to prevent user enumeration
 		response.Error(w, r, http.StatusUnauthorized, response.ErrCodeInvalidCredentials, "invalid username or password", nil)
 		return
 	}
+
 
 	primaryRole := "user"
 	if len(ident.Roles) > 0 {

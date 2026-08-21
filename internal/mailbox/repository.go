@@ -33,14 +33,30 @@ func NewPostgresRepository(db *sql.DB) Repository {
 
 func (r *postgresRepository) Create(ctx context.Context, m *Mailbox) error {
 	query := `
-		INSERT INTO mailboxes (id, domain_id, email, password_hash, quota_bytes, used_bytes, status, provisioning_status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO mailboxes (id, domain_id, email, password_hash, quota_bytes, used_bytes, status, provisioning_status, identity_provider, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	`
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	now := time.Now().UTC()
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = now
+	}
+	if m.UpdatedAt.IsZero() {
+		m.UpdatedAt = now
+	}
+	if m.Status == "" {
+		m.Status = "active"
+	}
 	if m.ProvisioningStatus == "" {
 		m.ProvisioningStatus = ProvisioningPending
 	}
+	if m.IdentityProvider == "" {
+		m.IdentityProvider = "local"
+	}
 
-	_, err := r.db.ExecContext(ctx, query, m.ID, m.DomainID, m.Email, m.PasswordHash, m.QuotaBytes, m.UsedBytes, m.Status, m.ProvisioningStatus, m.CreatedAt, m.UpdatedAt)
+	_, err := r.db.ExecContext(ctx, query, m.ID, m.DomainID, m.Email, m.PasswordHash, m.QuotaBytes, m.UsedBytes, m.Status, m.ProvisioningStatus, m.IdentityProvider, m.CreatedAt, m.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("repository create mailbox: %w", err)
 	}
@@ -49,14 +65,14 @@ func (r *postgresRepository) Create(ctx context.Context, m *Mailbox) error {
 
 func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, COALESCE(m.identity_provider, 'local'), m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		WHERE m.email = $1
 	`
 	m := &Mailbox{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.IdentityProvider, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -69,14 +85,14 @@ func (r *postgresRepository) GetByEmail(ctx context.Context, email string) (*Mai
 
 func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, COALESCE(m.identity_provider, 'local'), m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		WHERE m.id = $1
 	`
 	m := &Mailbox{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+		&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.IdentityProvider, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -89,7 +105,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Mailbo
 
 func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 	query := `
-		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, m.created_at, m.updated_at, d.name
+		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, COALESCE(m.identity_provider, 'local'), m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
 		ORDER BY m.created_at ASC
@@ -104,7 +120,7 @@ func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 	for rows.Next() {
 		m := &Mailbox{}
 		if err := rows.Scan(
-			&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
+			&m.ID, &m.DomainID, &m.Email, &m.PasswordHash, &m.QuotaBytes, &m.UsedBytes, &m.Status, &m.ProvisioningStatus, &m.IdentityProvider, &m.CreatedAt, &m.UpdatedAt, &m.DomainName,
 		); err != nil {
 			return nil, fmt.Errorf("repository scan mailbox: %w", err)
 		}

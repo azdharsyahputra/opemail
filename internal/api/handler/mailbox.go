@@ -6,16 +6,21 @@ import (
 	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/api/response"
+	"github.com/azdharsyahputra/openmail/internal/audit"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/go-chi/chi/v5"
 )
 
 type MailboxHandler struct {
 	mailboxService mailbox.Service
+	auditService   audit.Service
 }
 
-func NewMailboxHandler(mbSvc mailbox.Service) *MailboxHandler {
-	return &MailboxHandler{mailboxService: mbSvc}
+func NewMailboxHandler(mbSvc mailbox.Service, auditSvc audit.Service) *MailboxHandler {
+	return &MailboxHandler{
+		mailboxService: mbSvc,
+		auditService:   auditSvc,
+	}
 }
 
 type CreateMailboxRequest struct {
@@ -75,9 +80,12 @@ func (h *MailboxHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	// Trigger initial provisioning
 	_, _, _ = h.mailboxService.Provision(r.Context(), req.Email)
+
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.create", "mailbox", &mb.ID, map[string]string{"email": mb.Email})
+	}
 
 	response.JSON(w, http.StatusCreated, mb)
 }
@@ -95,6 +103,8 @@ func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	email := chi.URLParam(r, "email")
+	mb, _ := h.mailboxService.GetByEmail(r.Context(), email)
+
 	err := h.mailboxService.Delete(r.Context(), email)
 	if err != nil {
 		if err == mailbox.ErrMailboxNotFound {
@@ -103,6 +113,15 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to delete mailbox", err.Error())
 		return
+	}
+
+	if h.auditService != nil {
+		var mbID *string
+		if mb != nil {
+			idStr := mb.ID.String()
+			mbID = &idStr
+		}
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.delete", "mailbox", nil, map[string]interface{}{"email": email, "mailbox_id": mbID})
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "mailbox deleted successfully"})
@@ -121,6 +140,10 @@ func (h *MailboxHandler) Suspend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.suspend", "mailbox", &mb.ID, map[string]string{"email": mb.Email})
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "mailbox suspended successfully"})
 }
 
@@ -137,6 +160,10 @@ func (h *MailboxHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.resume", "mailbox", &mb.ID, map[string]string{"email": mb.Email})
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "mailbox resumed successfully"})
 }
 
@@ -146,6 +173,10 @@ func (h *MailboxHandler) Provision(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "provisioning failed", err.Error())
 		return
+	}
+
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.provision", "mailbox", &mb.ID, map[string]string{"email": mb.Email})
 	}
 
 	response.JSON(w, http.StatusOK, mb)
@@ -167,6 +198,11 @@ func (h *MailboxHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 	if err := h.mailboxService.SetPassword(r.Context(), email, req.Password); err != nil {
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to set password", err.Error())
 		return
+	}
+
+	if h.auditService != nil {
+		// Secure audit: never log password
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "mailbox.password_change", "mailbox", nil, map[string]string{"email": email})
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})

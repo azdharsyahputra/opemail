@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/api/response"
+	"github.com/azdharsyahputra/openmail/internal/audit"
 	"github.com/azdharsyahputra/openmail/internal/dkim"
+
 	"github.com/azdharsyahputra/openmail/internal/dns"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
@@ -17,13 +19,15 @@ type DomainHandler struct {
 	domainService domain.Service
 	dkimService   dkim.Service
 	tlsService    *openmailtls.Service
+	auditService  audit.Service
 }
 
-func NewDomainHandler(domSvc domain.Service, dkimSvc dkim.Service, tlsSvc *openmailtls.Service) *DomainHandler {
+func NewDomainHandler(domSvc domain.Service, dkimSvc dkim.Service, tlsSvc *openmailtls.Service, auditSvc audit.Service) *DomainHandler {
 	return &DomainHandler{
 		domainService: domSvc,
 		dkimService:   dkimSvc,
 		tlsService:    tlsSvc,
+		auditService:  auditSvc,
 	}
 }
 
@@ -74,6 +78,10 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "domain.create", "domain", &d.ID, map[string]string{"domain": d.Name})
+	}
+
 	response.JSON(w, http.StatusCreated, d)
 }
 
@@ -100,8 +108,13 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "domain.delete", "domain", nil, map[string]string{"domain": domName})
+	}
+
 	response.JSON(w, http.StatusOK, map[string]string{"message": "domain deleted successfully"})
 }
+
 
 func (h *DomainHandler) Doctor(w http.ResponseWriter, r *http.Request) {
 	domName := chi.URLParam(r, "domain")
