@@ -1,0 +1,234 @@
+openapi: 3.1.0
+info:
+  title: MailOpen Control Plane REST API
+  description: Production-grade REST API Control Plane for MailOpen Mail Server Engine.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local MailOpen Server
+
+paths:
+  /health/live:
+    get:
+      summary: Liveness Probe
+      responses:
+        '200':
+          description: Process alive
+  /health/ready:
+    get:
+      summary: Readiness Probe
+      responses:
+        '200':
+          description: Subsystems ready
+        '503':
+          description: Subsystem down
+  /health/deep:
+    get:
+      summary: Deep Diagnostics Probe
+      responses:
+        '200':
+          description: Deep diagnostics healthy
+        '503':
+          description: Deep diagnostics unhealthy
+  /metrics:
+    get:
+      summary: Prometheus Metrics
+      responses:
+        '200':
+          description: Metrics text payload
+
+  /api/v1/auth/login:
+    post:
+      summary: Authenticate and issue API tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Token pair issued
+        '401':
+          description: Invalid credentials
+        '403':
+          description: Account suspended or disabled
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New token pair issued
+        '401':
+          description: Invalid or expired refresh token
+
+  /api/v1/auth/me:
+    get:
+      summary: Get current authenticated identity profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Identity profile details
+
+  /api/v1/domains:
+    get:
+      summary: List registered mail domains
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of domains
+    post:
+      summary: Create a new mail domain
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Domain created
+        '409':
+          description: Domain already exists
+
+  /api/v1/domains/{domain}:
+    get:
+      summary: Get domain details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain details
+        '404':
+          description: Domain not found
+    delete:
+      summary: Delete a domain
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Domain deleted
+
+  /api/v1/mailboxes:
+    get:
+      summary: List all virtual mailboxes
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of mailboxes
+    post:
+      summary: Create a new virtual mailbox
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                quota_bytes:
+                  type: integer
+      responses:
+        '201':
+          description: Mailbox created
+        '409':
+          description: Mailbox already exists
+
+  /api/v1/mailboxes/{email}/suspend:
+    post:
+      summary: Suspend a mailbox
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mailbox suspended
+
+  /api/v1/mailboxes/{email}/resume:
+    post:
+      summary: Resume a suspended mailbox
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: email
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Mailbox resumed
+
+  /api/v1/queue:
+    get:
+      summary: Inspect mail queue status or messages
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Queue messages or status
+
+  /api/v1/ldap/sync:
+    post:
+      summary: Trigger LDAP directory synchronization
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Sync completed report
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Opaque Token
