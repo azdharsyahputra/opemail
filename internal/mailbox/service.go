@@ -39,9 +39,11 @@ type Service interface {
 	Doctor(ctx context.Context, email string) (*provisioning.DoctorReport, error)
 	GetByEmail(ctx context.Context, email string) (*Mailbox, error)
 	List(ctx context.Context) ([]*Mailbox, error)
+	SetPassword(ctx context.Context, email, newPassword string) error
 	Delete(ctx context.Context, email string) error
 	VerifyPassword(password, encodedHash string) (bool, error)
 }
+
 
 type service struct {
 	mailboxRepo Repository
@@ -226,7 +228,30 @@ func (s *service) List(ctx context.Context) ([]*Mailbox, error) {
 	return s.mailboxRepo.List(ctx)
 }
 
+func (s *service) SetPassword(ctx context.Context, email, newPassword string) error {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if !isValidEmail(email) {
+		return ErrInvalidEmail
+	}
+	if len(newPassword) < 8 {
+		return ErrInvalidPassword
+	}
+
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	hashedPassword, err := HashPassword(newPassword, DefaultArgon2Params)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	return s.mailboxRepo.UpdatePasswordHash(ctx, mb.ID, hashedPassword)
+}
+
 func (s *service) Delete(ctx context.Context, email string) error {
+
 	email = strings.TrimSpace(strings.ToLower(email))
 	if email == "" {
 		return ErrInvalidEmail

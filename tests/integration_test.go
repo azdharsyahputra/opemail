@@ -38,13 +38,14 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 	defer db.Close()
 
 	// Clean up database tables before test
-	_ = database.RunMigrationsDown(db)
+	_ = database.DropAllTables(db)
 
-	// Run migrations up (runs 000001, 000002, 000003, 000004)
+	// Run migrations up (runs 000001, 000002, 000003, 000004, 000005)
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
 	}
-	defer database.RunMigrationsDown(db)
+	defer database.DropAllTables(db)
+
 
 	tempBlobDir, err := os.MkdirTemp("", "openmail-integration-blobs-*")
 	if err != nil {

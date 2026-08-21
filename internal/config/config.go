@@ -20,6 +20,12 @@ type Config struct {
 	PostfixDBName     string
 	PostfixDBUser     string
 	PostfixDBPassword string
+	DovecotConfigDir  string
+	DovecotDBHost     string
+	DovecotDBPort     int
+	DovecotDBName     string
+	DovecotDBUser     string
+	DovecotDBPassword string
 }
 
 func Load() (*Config, error) {
@@ -92,6 +98,38 @@ func Load() (*Config, error) {
 		postfixDBPassword = "postfix_secret"
 	}
 
+	dovecotConfigDir := os.Getenv("DOVECOT_CONFIG_DIR")
+	if dovecotConfigDir == "" {
+		dovecotConfigDir = "./data/dovecot"
+	}
+
+	dovecotDBHost := os.Getenv("DOVECOT_DB_HOST")
+	if dovecotDBHost == "" {
+		dovecotDBHost = "127.0.0.1"
+	}
+
+	dovecotDBPort := 5432
+	if val := os.Getenv("DOVECOT_DB_PORT"); val != "" {
+		if parsed, err := strconv.Atoi(val); err == nil {
+			dovecotDBPort = parsed
+		}
+	}
+
+	dovecotDBName := os.Getenv("DOVECOT_DB_NAME")
+	if dovecotDBName == "" {
+		dovecotDBName = "mailopen"
+	}
+
+	dovecotDBUser := os.Getenv("DOVECOT_DB_USER")
+	if dovecotDBUser == "" {
+		dovecotDBUser = "mailopen_dovecot"
+	}
+
+	dovecotDBPassword := os.Getenv("DOVECOT_DB_PASSWORD")
+	if dovecotDBPassword == "" {
+		dovecotDBPassword = "dovecot_secret"
+	}
+
 	return &Config{
 		DatabaseURL:       dbURL,
 		StoragePath:       storagePath,
@@ -105,5 +143,11 @@ func Load() (*Config, error) {
 		PostfixDBName:     postfixDBName,
 		PostfixDBUser:     postfixDBUser,
 		PostfixDBPassword: postfixDBPassword,
+		DovecotConfigDir:  dovecotConfigDir,
+		DovecotDBHost:     dovecotDBHost,
+		DovecotDBPort:     dovecotDBPort,
+		DovecotDBName:     dovecotDBName,
+		DovecotDBUser:     dovecotDBUser,
+		DovecotDBPassword: dovecotDBPassword,
 	}, nil
 }

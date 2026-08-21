@@ -8,7 +8,6 @@ services:
       POSTGRES_DB: mailopen
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -28,6 +27,21 @@ services:
     volumes:
       - ../data/vmail:/var/vmail
       - ../data/postfix:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dovecot:
+    build:
+      context: ..
+      dockerfile: deploy/dovecot/Dockerfile
+    image: openmail-dovecot:latest
+    container_name: mailopen_dovecot
+    ports:
+      - "143:143"
+    volumes:
+      - ../data/vmail:/var/vmail
+      - ../data/dovecot:/config
     depends_on:
       postgres:
         condition: service_healthy

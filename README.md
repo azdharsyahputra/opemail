@@ -1,14 +1,34 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA lookups, and Dovecot Maildir++ provisioning.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA lookups, and Dovecot IMAP with native Maildir++ storage.
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md) for full architectural details.
+```text
+                         MailOpen
+                      (Control Plane)
+                            │
+                       PostgreSQL
+                     ┌──────┴──────┐
+              READ-ONLY         READ-ONLY
+                     │             │
+                  Postfix        Dovecot
+                     │             │
+                 SMTP (:25)    IMAP (:143)
+                     │             │
+                     └──────┬──────┘
+                            ▼
+                    /var/vmail/...
+                            │
+                            ▼
+                    Dovecot Maildir++
+```
+
+See [docs/architecture.md](docs/architecture.md) and [task.md](task.md) for full architectural details.
 
 ## Quick Start
 
-### 1. Start Database
+### 1. Start Database & Mail Services Stack
 ```bash
 docker compose -f deploy/docker-compose.yml up -d
 ```
@@ -37,7 +57,10 @@ go build -o bin/mailopen ./cmd/mailopen
 #### Mailbox Management & Provisioning (W2.3)
 ```bash
 # Create mailbox (auto-provisions Dovecot Maildir++)
-./bin/mailopen mailbox create ajar@example.com --password "secretPass123"
+./bin/mailopen mailbox create ajar@example.com --password "SecurePass123"
+
+# Update password
+./bin/mailopen mailbox password set ajar@example.com --password "NewPass123"
 
 # List mailboxes with provisioning status
 ./bin/mailopen mailbox list
@@ -68,8 +91,29 @@ go build -o bin/mailopen ./cmd/mailopen
 ./bin/mailopen postfix lookup mailbox ajar@example.com
 ./bin/mailopen postfix lookup alias support@example.com
 
-# Reload Postfix service (only on config changes, not on mailbox changes)
+# Reload Postfix service (only on config changes)
 ./bin/mailopen postfix reload
+```
+
+#### Dovecot IMAP & Authentication Adapter (W2.5)
+```bash
+# Generate Dovecot configuration and SQL mapping files
+./bin/mailopen dovecot config generate
+
+# Validate Dovecot configuration syntax
+./bin/mailopen dovecot config validate
+
+# Run Dovecot Doctor diagnostics & health check
+./bin/mailopen dovecot doctor
+
+# Simulate userdb lookup (derived Maildir path)
+./bin/mailopen dovecot lookup user ajar@example.com
+
+# Test Argon2id passdb authentication against PostgreSQL
+./bin/mailopen dovecot auth test ajar@example.com --password "SecurePass123"
+
+# Reload Dovecot service (only on config changes)
+./bin/mailopen dovecot reload
 ```
 
 #### Storage & Message Management

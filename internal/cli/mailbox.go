@@ -143,6 +143,31 @@ var mailboxDeleteCmd = &cobra.Command{
 	},
 }
 
+var mailboxPasswordCmd = &cobra.Command{
+	Use:   "password",
+	Short: "Manage mailbox passwords",
+}
+
+var mailboxPasswordSetCmd = &cobra.Command{
+	Use:   "set <email>",
+	Short: "Update mailbox password",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		if mailboxPassword == "" {
+			return fmt.Errorf("please provide password via --password")
+		}
+
+		err := mailboxService.SetPassword(cmd.Context(), email, mailboxPassword)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Password for %s updated successfully\n", email)
+		return nil
+	},
+}
+
 func checkMark(passed bool) string {
 	if passed {
 		return "✓"
@@ -154,9 +179,15 @@ func init() {
 	mailboxCreateCmd.Flags().StringVarP(&mailboxPassword, "password", "p", "", "Password for the mailbox (min 8 chars)")
 	mailboxCreateCmd.Flags().Int64VarP(&mailboxQuota, "quota", "q", 1073741824, "Quota in bytes (default 1GB)")
 
+	mailboxPasswordSetCmd.Flags().StringVarP(&mailboxPassword, "password", "p", "", "New password for the mailbox (min 8 chars)")
+
+	mailboxPasswordCmd.AddCommand(mailboxPasswordSetCmd)
+
 	mailboxCmd.AddCommand(mailboxCreateCmd)
 	mailboxCmd.AddCommand(mailboxProvisionCmd)
 	mailboxCmd.AddCommand(mailboxDoctorCmd)
 	mailboxCmd.AddCommand(mailboxListCmd)
 	mailboxCmd.AddCommand(mailboxDeleteCmd)
+	mailboxCmd.AddCommand(mailboxPasswordCmd)
 }
+

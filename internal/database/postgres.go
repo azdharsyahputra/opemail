@@ -64,8 +64,22 @@ func RunMigrationsDown(db *sql.DB) error {
 	}
 
 	if err := m.Down(); err != nil && err != migrate.ErrNoChange {
+		// If migration is dirty or failed, drop schema migrations to reset
+		_, _ = db.Exec("DROP TABLE IF EXISTS schema_migrations CASCADE;")
 		return fmt.Errorf("migration down failed: %w", err)
 	}
 
 	return nil
 }
+
+func DropAllTables(db *sql.DB) error {
+	_, err := db.Exec(`
+		DROP TABLE IF EXISTS messages CASCADE;
+		DROP TABLE IF EXISTS aliases CASCADE;
+		DROP TABLE IF EXISTS mailboxes CASCADE;
+		DROP TABLE IF EXISTS domains CASCADE;
+		DROP TABLE IF EXISTS schema_migrations CASCADE;
+	`)
+	return err
+}
+

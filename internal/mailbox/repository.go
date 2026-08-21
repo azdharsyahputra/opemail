@@ -17,8 +17,10 @@ type Repository interface {
 	List(ctx context.Context) ([]*Mailbox, error)
 	UpdateProvisioningStatus(ctx context.Context, id uuid.UUID, status string) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 	Delete(ctx context.Context, email string) error
 }
+
 
 type postgresRepository struct {
 	db *sql.DB
@@ -145,7 +147,24 @@ func (r *postgresRepository) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 	return nil
 }
 
+func (r *postgresRepository) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
+	query := `UPDATE mailboxes SET password_hash = $1, updated_at = $2 WHERE id = $3`
+	res, err := r.db.ExecContext(ctx, query, hash, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository update password hash: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrMailboxNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepository) Delete(ctx context.Context, email string) error {
+
 	query := `DELETE FROM mailboxes WHERE email = $1`
 	res, err := r.db.ExecContext(ctx, query, email)
 	if err != nil {
