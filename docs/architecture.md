@@ -25,29 +25,66 @@
                          (Domains, Mailboxes)
 ```
 
+## Postfix Adapter & Inbound SMTP (W2.4)
+
+Postfix acts as the inbound SMTP Mail Transfer Agent (MTA) listening on port 25. All routing, domain, mailbox, and alias lookups are evaluated in real-time against PostgreSQL:
+
+```text
+                         INTERNET
+                            │
+                         TCP :25
+                            │
+                            ▼
+                       ┌─────────┐
+                       │ Postfix │
+                       └────┬────┘
+                            │
+                    PostgreSQL lookup (Read-Only)
+                            │
+             ┌──────────────┼──────────────┐
+             ▼              ▼              ▼
+          Domains        Mailboxes       Aliases
+             │              │              │
+             └──────────────┴──────────────┘
+                            │
+                            ▼
+                     /var/vmail/...
+                            │
+                            ▼
+                     Dovecot Maildir
+```
+
+### 1. Dynamic PostgreSQL Lookups (No Reloads)
+- **Virtual Domains (`pgsql-virtual-mailbox-domains.cf`)**:
+  ```sql
+  SELECT 1 FROM domains WHERE LOWER(name) = LOWER('%s') AND status = 'active' LIMIT 1
+  ```
+- **Virtual Mailboxes (`pgsql-virtual-mailbox-maps.cf`)**:
+  ```sql
+  SELECT 1 FROM mailboxes m
+  JOIN domains d ON d.id = m.domain_id
+  WHERE LOWER(m.email) = LOWER('%s')
+    AND m.status = 'active'
+    AND m.provisioning_status = 'ready'
+  LIMIT 1
+  ```
+- **Virtual Aliases (`pgsql-virtual-alias-maps.cf`)**:
+  ```sql
+  SELECT a.destination FROM aliases a
+  JOIN domains d ON d.id = a.domain_id
+  WHERE LOWER(a.source) = LOWER('%s') AND d.status = 'active'
+  ```
+
+### 2. Security & Anti-Relay Baseline
+- Port 25 is restricted to inbound SMTP for local virtual domains.
+- Postfix uses `permit_mynetworks, reject_unauth_destination` to block open relay attempts.
+- Password hashes (Argon2id) are isolated inside MailOpen/Dovecot and never exposed to Postfix.
+- Database access for Postfix is strictly read-only via a dedicated user (`mailopen_postfix`).
+
 ## Mailbox Provisioning Architecture (W2.3)
 
 MailOpen serves as the **Control Plane** and manages mailbox provisioning and lifecycle, delegating mail access and live storage to **Dovecot**:
 
-```text
-                    MailOpen (Control Plane)
-                               │
-                        Mailbox Service
-                               │
-                       Provisioner Layer
-                               │
-                 ┌─────────────┴─────────────┐
-                 ▼                           ▼
-              Postfix                     Dovecot
-                 │                           │
-                 │                       Maildir++
-                 │                           │
-                 └─────────────┬─────────────┘
-                               ▼
-                        /var/vmail/...
-```
-
-### 1. Directory Structure (Dovecot Maildir++)
 ```text
 /var/vmail/
 └── example.com/
@@ -59,18 +96,7 @@ MailOpen serves as the **Control Plane** and manages mailbox provisioning and li
 ```
 - **Permission**: `0750`
 - **Ownership**: `vmail:vmail` (UID: 5000, GID: 5000)
-- **RFC Path Derivation**: Calculated dynamically from `domain + normalized localpart`, guarded against path traversal. Not stored in DB.
-
-### 2. Provisioning States
-Mailboxes progress through explicit provisioning states in PostgreSQL:
-- `pending`: Registered in DB, awaiting filesystem/engine allocation.
-- `provisioning`: Provisioner actively creating directories/configurations.
-- `ready`: Maildir structure verified and ready for Dovecot.
-- `failed`: Provisioning error encountered; retryable via CLI.
-- `deprovisioning`: Pending filesystem cleanup.
-
-### 3. Mailbox Doctor
-Validates database record status, directory existence (`Maildir`, `cur`, `new`, `tmp`), filesystem permissions (`0750`), and process ownership (`vmail:vmail`).
+- **Provisioning Lifecycle**: `pending` $\rightarrow$ `provisioning` $\rightarrow$ `ready` / `failed` / `deprovisioning`.
 
 ## Storage Layer Abstraction (`internal/storage`)
 

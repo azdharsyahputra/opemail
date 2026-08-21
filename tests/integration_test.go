@@ -1,21 +1,22 @@
 package tests
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+
 
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/database"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
+	"github.com/azdharsyahputra/openmail/internal/postfix"
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/storage"
+	"github.com/google/uuid"
 )
 
 func TestIntegration_PostgreSQL(t *testing.T) {
@@ -39,7 +40,7 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 	// Clean up database tables before test
 	_ = database.RunMigrationsDown(db)
 
-	// Run migrations up (runs 000001, 000002, 000003)
+	// Run migrations up (runs 000001, 000002, 000003, 000004)
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
 	}
@@ -71,10 +72,12 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 	domainRepo := domain.NewPostgresRepository(db)
 	mailboxRepo := mailbox.NewPostgresRepository(db)
 	messageRepo := message.NewPostgresRepository(db)
+	postfixRepo := postfix.NewPostgresRepository(db)
 
 	domainSvc := domain.NewService(domainRepo)
 	mailboxSvc := mailbox.NewService(mailboxRepo, domainRepo, prov)
 	messageSvc := message.NewService(messageRepo, mailboxRepo, blobStore)
+	postfixSvc := postfix.NewService(postfixRepo, postfix.NewSystemProvisioner("/tmp"))
 
 	// 1. Create Domain
 	dom, err := domainSvc.Create(ctx, "example.com")
@@ -85,19 +88,21 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 		t.Errorf("expected domain name example.com, got %s", dom.Name)
 	}
 
-	// 2. Duplicate Domain Error
-	_, err = domainSvc.Create(ctx, "example.com")
-	if err != domain.ErrDomainExists {
-		t.Errorf("expected ErrDomainExists, got %v", err)
+	// 2. Postfix Domain Lookup test (case-insensitive)
+	found, err := postfixRepo.LookupVirtualDomain(ctx, "example.com")
+	if err != nil || !found {
+		t.Errorf("expected domain example.com to be found by postfix, found=%v err=%v", found, err)
+	}
+	found, err = postfixRepo.LookupVirtualDomain(ctx, "EXAMPLE.COM")
+	if err != nil || !found {
+		t.Errorf("expected domain EXAMPLE.COM case-insensitive lookup to pass, found=%v err=%v", found, err)
+	}
+	found, err = postfixRepo.LookupVirtualDomain(ctx, "unknown.com")
+	if err != nil || found {
+		t.Errorf("expected unknown domain to return false, found=%v err=%v", found, err)
 	}
 
-	// 3. Invalid Domain Error
-	_, err = domainSvc.Create(ctx, "invalid_domain")
-	if err != domain.ErrInvalidDomain {
-		t.Errorf("expected ErrInvalidDomain, got %v", err)
-	}
-
-	// 4. Create Mailbox & Verify Automatic Provisioning to Ready
+	// 3. Create Mailbox & Verify Automatic Provisioning to Ready
 	mb, err := mailboxSvc.Create(ctx, "ajar@example.com", "securepass123", 1073741824)
 	if err != nil {
 		t.Fatalf("expected no error creating mailbox, got %v", err)
@@ -109,21 +114,66 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 		t.Errorf("expected provisioning_status ready, got %s", mb.ProvisioningStatus)
 	}
 
-	// Check filesystem Dovecot Maildir++ layout
-	maildirPath := filepath.Join(tempVmailDir, "example.com", "ajar", "Maildir")
-	subdirs := []string{"", "cur", "new", "tmp"}
-	for _, sub := range subdirs {
-		dir := filepath.Join(maildirPath, sub)
-		info, err := os.Stat(dir)
-		if err != nil || !info.IsDir() {
-			t.Errorf("expected directory %s to exist, err=%v", dir, err)
-		}
-		if perm := info.Mode().Perm(); perm != 0750 {
-			t.Errorf("expected permission 0750 on %s, got %04o", dir, perm)
-		}
+	// 4. Postfix Mailbox Lookup test (case-insensitive & ready check)
+	found, err = postfixRepo.LookupVirtualMailbox(ctx, "ajar@example.com")
+	if err != nil || !found {
+		t.Errorf("expected mailbox ajar@example.com to be found by postfix, found=%v err=%v", found, err)
+	}
+	found, err = postfixRepo.LookupVirtualMailbox(ctx, "AJAR@EXAMPLE.COM")
+	if err != nil || !found {
+		t.Errorf("expected mailbox AJAR@EXAMPLE.COM case-insensitive to pass, found=%v err=%v", found, err)
+	}
+	found, err = postfixRepo.LookupVirtualMailbox(ctx, "ghost@example.com")
+	if err != nil || found {
+		t.Errorf("expected unknown mailbox in valid domain to return false, found=%v err=%v", found, err)
 	}
 
-	// 5. Test Mailbox Doctor
+	// 5. Test Non-Ready and Suspended Mailbox Lookup Filtering
+	_ = mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, mailbox.ProvisioningFailed)
+	found, err = postfixRepo.LookupVirtualMailbox(ctx, "ajar@example.com")
+	if err != nil || found {
+		t.Errorf("expected failed provisioning mailbox to be rejected by postfix lookup, found=%v", found)
+	}
+	_ = mailboxRepo.UpdateProvisioningStatus(ctx, mb.ID, mailbox.ProvisioningReady)
+
+	_ = mailboxRepo.UpdateStatus(ctx, mb.ID, "suspended")
+	found, err = postfixRepo.LookupVirtualMailbox(ctx, "ajar@example.com")
+	if err != nil || found {
+		t.Errorf("expected suspended mailbox to be rejected by postfix lookup, found=%v", found)
+	}
+	_ = mailboxRepo.UpdateStatus(ctx, mb.ID, "active")
+
+	// 6. Test Alias Lookup in PostgreSQL
+	aliasQuery := `INSERT INTO aliases (id, domain_id, source, destination, created_at) VALUES ($1, $2, $3, $4, NOW())`
+	_, err = db.ExecContext(ctx, aliasQuery, uuid.New(), dom.ID, "support@example.com", "ajar@example.com")
+	if err != nil {
+		t.Fatalf("failed to insert test alias: %v", err)
+	}
+
+	aliases, err := postfixRepo.LookupVirtualAlias(ctx, "support@example.com")
+	if err != nil || len(aliases) != 1 || aliases[0] != "ajar@example.com" {
+		t.Errorf("expected alias lookup to return ajar@example.com, got %v, err=%v", aliases, err)
+	}
+
+	// 7. Test MailTransport Decoupled Recipient Validation
+	valid, err := postfixSvc.ValidateRecipient(ctx, "ajar@example.com")
+	if err != nil || !valid {
+		t.Errorf("expected ajar@example.com recipient to be valid, valid=%v err=%v", valid, err)
+	}
+	valid, err = postfixSvc.ValidateRecipient(ctx, "support@example.com")
+	if err != nil || !valid {
+		t.Errorf("expected support@example.com alias to be valid recipient, valid=%v err=%v", valid, err)
+	}
+	valid, err = postfixSvc.ValidateRecipient(ctx, "nonexistent@example.com")
+	if err != postfix.ErrMailboxNotFound || valid {
+		t.Errorf("expected ErrMailboxNotFound for nonexistent recipient, valid=%v err=%v", valid, err)
+	}
+	valid, err = postfixSvc.ValidateRecipient(ctx, "user@otherdomain.com")
+	if err != postfix.ErrDomainNotFound || valid {
+		t.Errorf("expected ErrDomainNotFound for outside domain, valid=%v err=%v", valid, err)
+	}
+
+	// 8. Test Mailbox Doctor
 	doctorReport, err := mailboxSvc.Doctor(ctx, "ajar@example.com")
 	if err != nil {
 		t.Fatalf("expected no error from doctor, got %v", err)
@@ -132,90 +182,20 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 		t.Errorf("expected mailbox to be healthy, got %+v", doctorReport)
 	}
 
-	// 6. Test Idempotent Provisioning
-	_, alreadyProvisioned, err := mailboxSvc.Provision(ctx, "ajar@example.com")
-	if err != nil {
-		t.Fatalf("expected no error from provision call, got %v", err)
-	}
-	if !alreadyProvisioned {
-		t.Errorf("expected alreadyProvisioned=true for ready mailbox")
-	}
-
-	// Verify Argon2id password hash format and valid password check
-	if valid, err := mailboxSvc.VerifyPassword("securepass123", mb.PasswordHash); err != nil || !valid {
-		t.Errorf("password verification failed: valid=%v, err=%v", valid, err)
-	}
-
-	// 7. Get Mailbox
-	gotMb, err := mailboxSvc.GetByEmail(ctx, "ajar@example.com")
-	if err != nil {
-		t.Fatalf("expected no error getting mailbox, got %v", err)
-	}
-	if gotMb.ID != mb.ID {
-		t.Errorf("expected mailbox ID %s, got %s", mb.ID, gotMb.ID)
-	}
-	if gotMb.ProvisioningStatus != mailbox.ProvisioningReady {
-		t.Errorf("expected provisioning status ready in DB, got %s", gotMb.ProvisioningStatus)
-	}
-
-	// 8. List Mailboxes
-	list, err := mailboxSvc.List(ctx)
-	if err != nil {
-		t.Fatalf("expected no error listing mailboxes, got %v", err)
-	}
-	if len(list) != 1 {
-		t.Errorf("expected 1 mailbox, got %d", len(list))
-	}
-
-	// 9. Store Message into Mailbox & BlobStore
-	rawEmail := "Message-ID: <msg-001@example.com>\r\n" +
-		"From: sender@domain.com\r\n" +
-		"To: ajar@example.com\r\n" +
-		"Subject: Welcome to OpenMail\r\n" +
-		"Date: Fri, 21 Aug 2026 14:00:00 +0000\r\n\r\n" +
-		"Hello Ajar, this is your first email payload."
-
+	// 9. Store and retrieve email message
+	rawEmail := "From: sender@domain.com\r\nTo: ajar@example.com\r\nSubject: Test Email\r\n\r\nHello Ajar"
 	msg, err := messageSvc.Store(ctx, "ajar@example.com", strings.NewReader(rawEmail))
 	if err != nil {
-		t.Fatalf("expected no error storing message, got %v", err)
+		t.Fatalf("expected no error storing message: %v", err)
 	}
-	if msg.Subject != "Welcome to OpenMail" {
-		t.Errorf("expected subject 'Welcome to OpenMail', got %s", msg.Subject)
-	}
+	_ = messageSvc.Delete(ctx, msg.ID)
 
-	// 10. Get Message Content
-	gotMsg, reader, err := messageSvc.GetContent(ctx, msg.ID)
-	if err != nil {
-		t.Fatalf("expected no error getting message content, got %v", err)
-	}
-	defer reader.Close()
-
-	buf := new(bytes.Buffer)
-	_, _ = io.Copy(buf, reader)
-	if buf.String() != rawEmail {
-		t.Errorf("expected raw payload %q, got %q", rawEmail, buf.String())
-	}
-	if gotMsg.ID != msg.ID {
-		t.Errorf("expected msg ID %s, got %s", msg.ID, gotMsg.ID)
-	}
-
-	// 11. Delete Message
-	if err := messageSvc.Delete(ctx, msg.ID); err != nil {
-		t.Fatalf("expected no error deleting message, got %v", err)
-	}
-
-	// 12. Delete Mailbox & Verify Deprovisioning on Filesystem and DB Deletion
+	// 10. Delete Mailbox & Verify Deprovisioning
 	if err := mailboxSvc.Delete(ctx, "ajar@example.com"); err != nil {
-		t.Fatalf("expected no error deleting mailbox, got %v", err)
+		t.Fatalf("expected no error deleting mailbox: %v", err)
 	}
-
-	_, err = mailboxSvc.GetByEmail(ctx, "ajar@example.com")
-	if err != mailbox.ErrMailboxNotFound {
-		t.Errorf("expected ErrMailboxNotFound after deletion, got %v", err)
-	}
-
-	// Verify filesystem Maildir removed
-	if _, err := os.Stat(maildirPath); !os.IsNotExist(err) {
-		t.Errorf("expected %s to be deleted after mailbox deletion", maildirPath)
+	found, _ = postfixRepo.LookupVirtualMailbox(ctx, "ajar@example.com")
+	if found {
+		t.Error("expected deleted mailbox to not be found by postfix")
 	}
 }

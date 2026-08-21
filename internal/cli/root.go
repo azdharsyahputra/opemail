@@ -10,6 +10,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
+	"github.com/azdharsyahputra/openmail/internal/postfix"
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/storage"
 	"github.com/spf13/cobra"
@@ -22,6 +23,8 @@ var (
 	blobStore      storage.BlobStore
 	messageRepo    message.Repository
 	messageService message.Service
+	postfixRepo    postfix.Repository
+	postfixService postfix.Service
 )
 
 var rootCmd = &cobra.Command{
@@ -58,6 +61,10 @@ var rootCmd = &cobra.Command{
 		domainRepo := domain.NewPostgresRepository(db)
 		mailboxRepo := mailbox.NewPostgresRepository(db)
 		messageRepo = message.NewPostgresRepository(db)
+		postfixRepo = postfix.NewPostgresRepository(db)
+
+		postfixProv := postfix.NewSystemProvisioner(cfg.PostfixConfigDir)
+		postfixService = postfix.NewService(postfixRepo, postfixProv)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo, prov)
@@ -84,6 +91,7 @@ func init() {
 	rootCmd.AddCommand(domainCmd)
 	rootCmd.AddCommand(mailboxCmd)
 	rootCmd.AddCommand(messageCmd)
+	rootCmd.AddCommand(postfixCmd)
 	rootCmd.AddCommand(storageCmd)
 	rootCmd.AddCommand(migrateCmd)
 }

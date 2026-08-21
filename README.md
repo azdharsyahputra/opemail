@@ -1,6 +1,6 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL and Dovecot Maildir++ provisioning.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA lookups, and Dovecot Maildir++ provisioning.
 
 ## Architecture
 
@@ -50,6 +50,26 @@ go build -o bin/mailopen ./cmd/mailopen
 
 # Delete mailbox (deprovisions Maildir and removes from DB)
 ./bin/mailopen mailbox delete ajar@example.com
+```
+
+#### Postfix Adapter & MTA (W2.4)
+```bash
+# Generate Postfix configuration and pgsql maps
+./bin/mailopen postfix config generate
+
+# Validate Postfix configuration syntax
+./bin/mailopen postfix config validate
+
+# Run Postfix Doctor diagnostics & live database lookup checks
+./bin/mailopen postfix doctor
+
+# Test dynamic PostgreSQL lookups
+./bin/mailopen postfix lookup domain example.com
+./bin/mailopen postfix lookup mailbox ajar@example.com
+./bin/mailopen postfix lookup alias support@example.com
+
+# Reload Postfix service (only on config changes, not on mailbox changes)
+./bin/mailopen postfix reload
 ```
 
 #### Storage & Message Management
