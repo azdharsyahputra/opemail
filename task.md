@@ -1,88 +1,91 @@
-# W2.6 — SMTP Submission :587 + SMTP AUTH
+# W2.7 — TLS / STARTTLS + Secure Mail Access
 
-## 0. Definition of Done
+## 0. Target Architecture
 
-Setelah W2.6:
 ```text
-                    MAIL CLIENT
-                 Outlook / Thunderbird
-                         │
-                         │ SMTP Submission
-                         │ TCP :587
-                         ▼
-                ┌─────────────────┐
-                │     Postfix     │
-                │  submission     │
-                └────────┬────────┘
-                         │
-                     SMTP AUTH
-                         │
-                         ▼
-                    Dovecot SASL
-                         │
-                         ▼
-                    PostgreSQL
-                         │
-                    Argon2id
-                         │
-                         ▼
-                  authenticated
-                         │
-                         ▼
-                    Postfix Queue
-                         │
-                         ▼
-                      Internet / Local Maildir
+                         INTERNET
+                            │
+             ┌──────────────┴──────────────┐
+             │                             │
+           TCP :25                       TCP :587
+             │                             │
+        SMTP / MTA                    Submission
+             │                             │
+        STARTTLS opt.                 STARTTLS (REQUIRED)
+             │                             │
+             └──────────────┬──────────────┘
+                            │
+                           TLS
+                            │
+                         Postfix
+                            │
+                       Dovecot SASL
+                            │
+                       PostgreSQL
+
+
+                         TCP :993                   TCP :143
+                            │                          │
+                        IMAPS (TLS)                 STARTTLS
+                            │                          │
+                            └───────────┬──────────────┘
+                                        │
+                                     Dovecot
+                                        │
+                                   PostgreSQL
 ```
 
-Inbound (:25) tetap:
+Client configuration:
 ```text
-Internet -> Postfix :25 (No AUTH) -> Maildir -> Dovecot -> IMAP :143
+SMTP Submission:
+  host: mail.example.com
+  port: 587
+  security: STARTTLS
+  auth: required
+
+IMAP:
+  host: mail.example.com
+  port: 993 (IMAPS) / 143 (STARTTLS)
+  security: SSL/TLS / STARTTLS
+  auth: required (plaintext auth blocked before TLS)
 ```
 
-## Definition of Done Checklist
+---
 
-- [x] SMTP
-  - [x] :25 inbound tetap bekerja
-  - [x] :25 open relay tetap blocked
-  - [x] :25 SMTP AUTH disabled
-- [x] Submission
-  - [x] :587 listening
-  - [x] :587 SMTP AUTH enabled
-  - [x] Authenticated submission works
-  - [x] Unauthenticated submission blocked
-- [x] Authentication
-  - [x] Dovecot SASL via Unix socket
-  - [x] PostgreSQL single source of truth
-  - [x] Argon2id verification
-  - [x] `active` + `ready` required
-  - [x] Wrong password rejected (535)
-  - [x] Suspended rejected
-  - [x] Pending rejected
-- [x] Sender Policy
-  - [x] Primary sender works (`ajar@example.com`)
-  - [x] Authorized alias works (`support@example.com`)
-  - [x] Unauthorized/spoofed sender rejected (`553 Sender address rejected`)
-- [x] Delivery
-  - [x] Authenticated -> local mailbox (delivered to Maildir)
-  - [x] Authenticated -> outbound queue (queued for remote delivery)
-  - [x] Queue ID generated
-- [x] Security
-  - [x] No plaintext credentials in logs
-  - [x] Read-only DB role (`mailopen_dovecot`)
-  - [x] SASL socket permissions safe (0660 / private)
-  - [x] No public SASL socket
-  - [x] Connection limits & baseline rate-limiting configured
-- [x] CLI & Doctor
-  - [x] `mailopen postfix submission config generate`
-  - [x] `mailopen postfix submission config validate`
-  - [x] `mailopen postfix submission doctor`
-  - [x] `mailopen postfix submission auth-test <email> --password "<pass>"`
-- [x] E2E
-  - [x] SMTP AUTH :587
-  - [x] MAIL FROM
-  - [x] RCPT TO
-  - [x] DATA
-  - [x] Queue generated
-  - [x] Local delivery to Maildir
-  - [x] IMAP sees submitted local message
+## 1. Definition of Done Checklist
+
+- [ ] **TLS Abstraction & Validation (`internal/tls`)**
+  - [ ] Model `Certificate` and `CertificateReport`
+  - [ ] PEM x509 parser & Private key parser (RSA/ECDSA/Ed25519)
+  - [ ] Public key / Private key match verification
+  - [ ] SAN Hostname validation (`cert.VerifyHostname`)
+  - [ ] Expiration validation (>30d HEALTHY, 8-30d WARNING, 1-7d CRITICAL, <=0d EXPIRED)
+  - [ ] Filesystem provider (`/etc/mailopen/tls/<hostname>/`)
+  - [ ] Atomic certificate installation (`.tmp` -> `fsync` -> `chmod` -> `rename`)
+  - [ ] Permissions (`0750` dir, `0644` fullchain.pem, `0600` privkey.pem)
+  - [ ] Safety rollback (invalid cert never replaces active cert)
+- [ ] **Postfix TLS Hardening**
+  - [ ] Port 25: STARTTLS offered (`may`), SMTP AUTH DISABLED
+  - [ ] Port 587: STARTTLS required (`encrypt`), SMTP AUTH required
+  - [ ] Plaintext AUTH before TLS rejected on :587
+  - [ ] Protocols: TLSv1.2 & TLSv1.3 enabled, TLSv1.0 & TLSv1.1 disabled
+- [ ] **Dovecot TLS Hardening**
+  - [ ] Port 993: Implicit TLS (IMAPS)
+  - [ ] Port 143: STARTTLS enabled, plaintext auth before TLS blocked (`ssl = required`)
+  - [ ] Protocols: `ssl_min_protocol = TLSv1.2`
+  - [ ] Certificate & key paths configured
+- [ ] **CLI Subcommands**
+  - [ ] `mailopen tls install --hostname <host> --cert <cert> --key <key>`
+  - [ ] `mailopen tls validate --hostname <host>`
+  - [ ] `mailopen tls status --hostname <host>`
+  - [ ] `mailopen tls doctor --hostname <host>`
+- [ ] **Testing & Diagnostics**
+  - [ ] Unit tests for cert/key matching, expiration, hostname verification
+  - [ ] `tests/tls_integration_test.go` real socket testing:
+    - [ ] Certificate valid / expired / mismatch / wrong hostname
+    - [ ] TLS 1.2 / 1.3 / 1.0 blocked / 1.1 blocked
+    - [ ] Port 587: STARTTLS + AUTH after TLS works, AUTH before TLS fails
+    - [ ] Port 25: STARTTLS works, AUTH fails
+    - [ ] Port 993: IMAPS TLS connect + LOGIN works
+    - [ ] Port 143: LOGIN before STARTTLS fails, LOGIN after STARTTLS works
+    - [ ] Full E2E mail submission (:587 STARTTLS) -> local delivery -> IMAPS (:993 TLS fetch)

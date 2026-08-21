@@ -2,9 +2,11 @@ package tests
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/smtp"
 	"os"
+
 	"testing"
 	"time"
 
@@ -136,6 +138,8 @@ func TestIntegration_Submission(t *testing.T) {
 		}
 		defer c.Close()
 
+		_ = c.StartTLS(&tls.Config{InsecureSkipVerify: true})
+
 		auth := &plainAuthNoTLS{username: "ajar@example.com", password: "SecurePass123"}
 		if err := c.Auth(auth); err != nil {
 			t.Fatalf("expected AUTH to succeed: %v", err)
@@ -161,11 +165,13 @@ func TestIntegration_Submission(t *testing.T) {
 		cWrong, err := smtp.Dial("127.0.0.1:587")
 		if err == nil {
 			defer cWrong.Close()
+			_ = cWrong.StartTLS(&tls.Config{InsecureSkipVerify: true})
 			authWrong := &plainAuthNoTLS{username: "ajar@example.com", password: "WrongPassword"}
 			if err := cWrong.Auth(authWrong); err == nil {
 				t.Errorf("expected wrong password to fail AUTH")
 			}
 		}
+
 
 		// C. Unauthenticated relay -> FAIL
 		cUnauth, err := smtp.Dial("127.0.0.1:587")

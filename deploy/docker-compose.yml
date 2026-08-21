@@ -28,6 +28,7 @@ services:
     volumes:
       - ../data/vmail:/var/vmail
       - ../data/postfix:/config
+      - ../data/tls:/etc/mailopen/tls:ro
       - postfix_private:/var/spool/postfix/private
     depends_on:
       postgres:
@@ -41,9 +42,11 @@ services:
     container_name: mailopen_dovecot
     ports:
       - "143:143"
+      - "993:993"
     volumes:
       - ../data/vmail:/var/vmail
       - ../data/dovecot:/config
+      - ../data/tls:/etc/mailopen/tls:ro
       - postfix_private:/var/spool/postfix/private
     depends_on:
       postgres:

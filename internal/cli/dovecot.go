@@ -49,7 +49,11 @@ var dovecotConfigGenerateCmd = &cobra.Command{
 			DBName:           cfg.DovecotDBName,
 			DBUser:           cfg.DovecotDBUser,
 			DBPassword:       cfg.DovecotDBPassword,
+			Hostname:         cfg.TLSHostname,
+			TLSCertFile:      fmt.Sprintf("/etc/mailopen/tls/%s/fullchain.pem", cfg.TLSHostname),
+			TLSKeyFile:       fmt.Sprintf("/etc/mailopen/tls/%s/privkey.pem", cfg.TLSHostname),
 		}
+
 
 		if err := dovecot.WriteConfigsAtomically(opts); err != nil {
 			return err

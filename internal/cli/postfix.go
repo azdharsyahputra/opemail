@@ -57,7 +57,10 @@ var postfixConfigGenerateCmd = &cobra.Command{
 			DBName:           cfg.PostfixDBName,
 			DBUser:           cfg.PostfixDBUser,
 			DBPassword:       cfg.PostfixDBPassword,
+			TLSCertFile:      fmt.Sprintf("/etc/mailopen/tls/%s/fullchain.pem", cfg.TLSHostname),
+			TLSKeyFile:       fmt.Sprintf("/etc/mailopen/tls/%s/privkey.pem", cfg.TLSHostname),
 		}
+
 
 		if err := postfix.WriteConfigsAtomically(opts); err != nil {
 			return err

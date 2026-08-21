@@ -26,6 +26,8 @@ type Config struct {
 	DovecotDBName     string
 	DovecotDBUser     string
 	DovecotDBPassword string
+	TLSBaseDir        string
+	TLSHostname       string
 }
 
 func Load() (*Config, error) {
@@ -130,6 +132,16 @@ func Load() (*Config, error) {
 		dovecotDBPassword = "dovecot_secret"
 	}
 
+	tlsBaseDir := os.Getenv("TLS_BASE_DIR")
+	if tlsBaseDir == "" {
+		tlsBaseDir = "./data/tls"
+	}
+
+	tlsHostname := os.Getenv("TLS_HOSTNAME")
+	if tlsHostname == "" {
+		tlsHostname = postfixHostname
+	}
+
 	return &Config{
 		DatabaseURL:       dbURL,
 		StoragePath:       storagePath,
@@ -149,5 +161,8 @@ func Load() (*Config, error) {
 		DovecotDBName:     dovecotDBName,
 		DovecotDBUser:     dovecotDBUser,
 		DovecotDBPassword: dovecotDBPassword,
+		TLSBaseDir:        tlsBaseDir,
+		TLSHostname:       tlsHostname,
 	}, nil
 }
+

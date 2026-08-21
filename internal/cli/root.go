@@ -102,4 +102,6 @@ func init() {
 	rootCmd.AddCommand(dovecotCmd)
 	rootCmd.AddCommand(storageCmd)
 	rootCmd.AddCommand(migrateCmd)
+	rootCmd.AddCommand(tlsCmd)
 }
+

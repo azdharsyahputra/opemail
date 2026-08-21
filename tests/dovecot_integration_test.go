@@ -3,13 +3,13 @@ package tests
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"database/sql"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
+
 
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/database"
@@ -180,16 +180,17 @@ func TestIntegration_Dovecot(t *testing.T) {
 	})
 
 	// 6. Live IMAP Session Matrix (Item 34, 35, 36, 39)
-	t.Run("Mailbox Access Matrix: Live IMAP :143 Session", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", "127.0.0.1:143", 500*time.Millisecond)
+	t.Run("Mailbox Access Matrix: Live IMAPS :993 Session", func(t *testing.T) {
+		tlsConn, err := tls.Dial("tcp", "127.0.0.1:993", &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
-			t.Skip("IMAP service not running on 127.0.0.1:143, skipping live socket test")
+			t.Skip("IMAPS service not running on 127.0.0.1:993, skipping live socket test")
 			return
 		}
-		defer conn.Close()
+		defer tlsConn.Close()
 
-		reader := bufio.NewReader(conn)
-		writer := bufio.NewWriter(conn)
+		reader := bufio.NewReader(tlsConn)
+		writer := bufio.NewWriter(tlsConn)
+
 
 		// Greeting
 		greeting, err := reader.ReadString('\n')

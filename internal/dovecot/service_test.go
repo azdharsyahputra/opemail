@@ -79,9 +79,34 @@ func TestDovecotConfigGeneration(t *testing.T) {
 		if !strings.Contains(configs.AuthConf, "auth_username_format = %Lu") {
 			t.Error("10-auth.conf missing %Lu lowercase username normalization")
 		}
+		if !strings.Contains(configs.AuthConf, "disable_plaintext_auth = yes") {
+			t.Error("10-auth.conf missing disable_plaintext_auth = yes")
+		}
+	})
+
+	t.Run("10-ssl.conf enables ssl = required and TLS 1.2+", func(t *testing.T) {
+		if !strings.Contains(configs.SSLConf, "ssl = required") {
+			t.Error("10-ssl.conf missing ssl = required")
+		}
+		if !strings.Contains(configs.SSLConf, "ssl_min_protocol = TLSv1.2") {
+			t.Error("10-ssl.conf missing ssl_min_protocol = TLSv1.2")
+		}
+	})
+
+	t.Run("10-master.conf configures IMAPS port 993 and SASL socket", func(t *testing.T) {
+		if !strings.Contains(configs.MasterConf, "port = 993") {
+			t.Error("10-master.conf missing IMAPS port 993")
+		}
+		if !strings.Contains(configs.MasterConf, "ssl = yes") {
+			t.Error("10-master.conf missing ssl = yes on IMAPS")
+		}
+		if !strings.Contains(configs.MasterConf, "/var/spool/postfix/private/auth") {
+			t.Error("10-master.conf missing Postfix SASL socket")
+		}
 	})
 
 	t.Run("dovecot-pgsql.conf.ext has Argon2id passdb and userdb queries", func(t *testing.T) {
+
 		if !strings.Contains(configs.PgSQLConf, "default_pass_scheme = ARGON2ID") {
 			t.Error("dovecot-pgsql missing default_pass_scheme = ARGON2ID")
 		}
