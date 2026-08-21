@@ -110,6 +110,12 @@ smtpd_client_connection_count_limit = 200
 smtpd_client_connection_rate_limit = 300
 smtpd_client_message_rate_limit = 300
 smtpd_client_event_limit_exceptions = $mynetworks, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+
+# Anti-SMTP Smuggling Protection (CVE-2023-51764 & CVE-2023-51765)
+smtpd_forbid_bare_newline = yes
+smtpd_forbid_bare_newline_exclusions = $mynetworks
+smtpd_data_restrictions = reject_unauth_pipelining
+
 `,
 		opts.Hostname,
 		domainsCFPath,
