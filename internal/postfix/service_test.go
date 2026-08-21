@@ -100,6 +100,30 @@ func TestPostfixConfigGeneration(t *testing.T) {
 	})
 
 
+	t.Run("master.cf contains submission service with Dovecot SASL and sender restrictions", func(t *testing.T) {
+		if !strings.Contains(configs.MasterCF, "submission inet") {
+			t.Error("master.cf missing submission service")
+		}
+		if !strings.Contains(configs.MasterCF, "smtpd_sasl_auth_enable=yes") {
+			t.Error("master.cf missing smtpd_sasl_auth_enable=yes")
+		}
+		if !strings.Contains(configs.MasterCF, "smtpd_sasl_type=dovecot") {
+			t.Error("master.cf missing smtpd_sasl_type=dovecot")
+		}
+		if !strings.Contains(configs.MasterCF, "reject_sender_login_mismatch") {
+			t.Error("master.cf missing reject_sender_login_mismatch")
+		}
+	})
+
+	t.Run("pgsql-sender-login-maps.cf contains query for mailbox and aliases", func(t *testing.T) {
+		if !strings.Contains(configs.SenderLoginMapsCF, "SELECT email FROM mailboxes") {
+			t.Error("sender login CF missing mailbox email query")
+		}
+		if !strings.Contains(configs.SenderLoginMapsCF, "UNION") {
+			t.Error("sender login CF missing UNION query for aliases")
+		}
+	})
+
 	t.Run("WriteConfigsAtomically writes 0640 permission files", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "openmail-postfix-test-*")
 		if err != nil {
@@ -115,19 +139,22 @@ func TestPostfixConfigGeneration(t *testing.T) {
 
 		expectedFiles := []string{
 			"main.cf",
+			"master.cf",
 			"pgsql-virtual-mailbox-domains.cf",
 			"pgsql-virtual-mailbox-maps.cf",
 			"pgsql-virtual-alias-maps.cf",
+			"pgsql-sender-login-maps.cf",
 		}
 
 		for _, f := range expectedFiles {
-			path := filepath.Join(tempDir, f)
-			info, err := os.Stat(path)
+			p := filepath.Join(tempDir, f)
+			info, err := os.Stat(p)
 			if err != nil {
-				t.Errorf("expected file %s to exist, got %v", f, err)
+				t.Errorf("expected file %s to exist, err: %v", f, err)
+				continue
 			}
 			if perm := info.Mode().Perm(); perm > 0640 {
-				t.Errorf("expected file %s permission <= 0640, got %04o", f, perm)
+				t.Errorf("file %s expected perm <= 0640, got %04o", f, perm)
 			}
 		}
 	})

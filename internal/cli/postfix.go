@@ -2,18 +2,24 @@ package cli
 
 import (
 	"fmt"
+	"net"
+	"net/smtp"
 	"strings"
+	"time"
 
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/postfix"
 	"github.com/spf13/cobra"
 )
 
-var (
-	postfixConfigOutDir       string
-	postfixTargetConfigPath   string
-)
 
+
+var (
+	postfixConfigOutDir     string
+	postfixTargetConfigPath string
+	postfixAuthPassword     string
+	submissionAuthPassword  string
+)
 
 var postfixCmd = &cobra.Command{
 	Use:   "postfix",
@@ -27,7 +33,7 @@ var postfixConfigCmd = &cobra.Command{
 
 var postfixConfigGenerateCmd = &cobra.Command{
 	Use:   "generate",
-	Short: "Generate Postfix main.cf and pgsql-*.cf map configuration files",
+	Short: "Generate Postfix main.cf, master.cf, and pgsql-*.cf map configuration files",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -57,14 +63,15 @@ var postfixConfigGenerateCmd = &cobra.Command{
 			return err
 		}
 
-
 		fmt.Println("Postfix configuration generated successfully:")
 		fmt.Printf("  Target Directory: %s\n", outDir)
 		fmt.Println("  Files generated:")
 		fmt.Println("    - main.cf")
+		fmt.Println("    - master.cf (inbound :25 & submission :587)")
 		fmt.Println("    - pgsql-virtual-mailbox-domains.cf")
 		fmt.Println("    - pgsql-virtual-mailbox-maps.cf")
 		fmt.Println("    - pgsql-virtual-alias-maps.cf")
+		fmt.Println("    - pgsql-sender-login-maps.cf")
 		return nil
 	},
 }
@@ -214,12 +221,149 @@ var postfixLookupAliasCmd = &cobra.Command{
 	},
 }
 
+// Submission Subcommands (W2.6)
+var postfixSubmissionCmd = &cobra.Command{
+	Use:   "submission",
+	Short: "Manage Postfix submission (:587) and SMTP AUTH adapter",
+}
+
+var postfixSubmissionConfigCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Manage Postfix submission configuration",
+}
+
+var postfixSubmissionDoctorCmd = &cobra.Command{
+	Use:   "doctor",
+	Short: "Run diagnostics and check health of Postfix submission (:587)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		outDir := postfixConfigOutDir
+		if outDir == "" {
+			outDir = cfg.PostfixConfigDir
+		}
+
+		authorizer := postfix.NewPostgresSenderAuthorizer(db)
+		report := postfix.RunSubmissionDoctor(cmd.Context(), postfixRepo, authorizer, outDir)
+
+		fmt.Println("Postfix Submission Doctor")
+		fmt.Println("────────────────────────────────")
+		fmt.Println()
+
+		categories := []struct {
+			name   string
+			checks []postfix.CheckItem
+		}{
+			{"Postfix", report.PostfixChecks},
+			{"Listener", report.ListenerChecks},
+			{"SASL", report.SASLChecks},
+			{"Authentication", report.AuthenticationChecks},
+			{"Relay Policy", report.RelayPolicyChecks},
+			{"Security", report.SecurityChecks},
+		}
+
+		for _, cat := range categories {
+			fmt.Println(cat.name)
+			for _, c := range cat.checks {
+				icon := "✓"
+				if !c.Passed {
+					icon = "✗"
+				}
+				fmt.Printf("  %-30s %s  %s\n", c.Name, icon, c.Message)
+			}
+			fmt.Println()
+		}
+
+		if report.Healthy {
+			fmt.Println("Result: HEALTHY")
+		} else {
+			fmt.Println("Result: ATTENTION REQUIRED")
+		}
+
+		return nil
+	},
+}
+
+var postfixSubmissionStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Check Postfix submission :587 listener status",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		conn, err := net.DialTimeout("tcp", "127.0.0.1:587", 1*time.Second)
+		if err != nil {
+			fmt.Println("Submission Status: STOPPED / UNREACHABLE")
+			return nil
+		}
+		defer conn.Close()
+		fmt.Println("Submission Status: RUNNING (127.0.0.1:587 listening)")
+		return nil
+	},
+}
+
+type plainAuthWithoutTLS struct {
+	username, password string
+}
+
+func (a *plainAuthWithoutTLS) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	resp := []byte("\x00" + a.username + "\x00" + a.password)
+	return "PLAIN", resp, nil
+}
+
+func (a *plainAuthWithoutTLS) Next(fromServer []byte, more bool) ([]byte, error) {
+	return nil, nil
+}
+
+var postfixSubmissionAuthTestCmd = &cobra.Command{
+	Use:   "auth-test <email>",
+	Short: "Test SMTP AUTH on 127.0.0.1:587 against Dovecot SASL & PostgreSQL",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		email := args[0]
+		if submissionAuthPassword == "" {
+			return fmt.Errorf("please provide password via --password")
+		}
+
+		fmt.Println("SMTP AUTH Test")
+		fmt.Println("────────────────────────")
+		fmt.Println("Server       127.0.0.1:587")
+		fmt.Printf("Username     %s\n", email)
+		fmt.Println("Mechanism    PLAIN")
+		fmt.Println()
+
+		c, err := smtp.Dial("127.0.0.1:587")
+		if err != nil {
+			fmt.Printf("Connection error: %v\n", err)
+			fmt.Println("Authentication: FAILED")
+			return nil
+		}
+		defer c.Close()
+
+		auth := &plainAuthWithoutTLS{
+			username: email,
+			password: submissionAuthPassword,
+		}
+
+		if err := c.Auth(auth); err != nil {
+			fmt.Println("Authentication: FAILED")
+			return nil
+		}
+
+		fmt.Println("Authentication: SUCCESS")
+		return nil
+	},
+}
+
 func init() {
 	postfixConfigGenerateCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target output directory for config files")
 	postfixConfigGenerateCmd.Flags().StringVar(&postfixTargetConfigPath, "target-path", "", "Target config path prefix used in main.cf (e.g. /etc/postfix)")
 	postfixConfigValidateCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target directory to validate")
 
 	postfixDoctorCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target directory to inspect")
+	postfixSubmissionDoctorCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target directory to inspect")
+
+	postfixSubmissionAuthTestCmd.Flags().StringVarP(&submissionAuthPassword, "password", "p", "", "Password for SMTP AUTH")
 
 	postfixConfigCmd.AddCommand(postfixConfigGenerateCmd)
 	postfixConfigCmd.AddCommand(postfixConfigValidateCmd)
@@ -228,8 +372,17 @@ func init() {
 	postfixLookupCmd.AddCommand(postfixLookupMailboxCmd)
 	postfixLookupCmd.AddCommand(postfixLookupAliasCmd)
 
+	postfixSubmissionConfigCmd.AddCommand(postfixConfigGenerateCmd)
+	postfixSubmissionConfigCmd.AddCommand(postfixConfigValidateCmd)
+
+	postfixSubmissionCmd.AddCommand(postfixSubmissionConfigCmd)
+	postfixSubmissionCmd.AddCommand(postfixSubmissionDoctorCmd)
+	postfixSubmissionCmd.AddCommand(postfixSubmissionStatusCmd)
+	postfixSubmissionCmd.AddCommand(postfixSubmissionAuthTestCmd)
+
 	postfixCmd.AddCommand(postfixConfigCmd)
 	postfixCmd.AddCommand(postfixReloadCmd)
 	postfixCmd.AddCommand(postfixDoctorCmd)
 	postfixCmd.AddCommand(postfixLookupCmd)
+	postfixCmd.AddCommand(postfixSubmissionCmd)
 }

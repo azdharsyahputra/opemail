@@ -14,5 +14,8 @@ mkdir -p /var/vmail
 chown -R vmail:vmail /var/vmail
 chmod 0750 /var/vmail
 
+# Ensure /var/spool/postfix/private exists for Postfix SASL socket
+mkdir -p /var/spool/postfix/private
+
 # Start Dovecot in foreground
 exec dovecot -F

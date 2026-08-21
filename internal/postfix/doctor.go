@@ -8,10 +8,12 @@ import (
 )
 
 type CheckItem struct {
-	Name    string `json:"name"`
-	Passed  bool   `json:"passed"`
-	Message string `json:"message"`
+	Category string `json:"category,omitempty"`
+	Name     string `json:"name"`
+	Passed   bool   `json:"passed"`
+	Message  string `json:"message"`
 }
+
 
 type DoctorReport struct {
 	BinaryInstalled CheckItem   `json:"binary_installed"`

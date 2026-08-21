@@ -24,9 +24,11 @@ services:
     container_name: mailopen_postfix
     ports:
       - "25:25"
+      - "587:587"
     volumes:
       - ../data/vmail:/var/vmail
       - ../data/postfix:/config
+      - postfix_private:/var/spool/postfix/private
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,9 +44,11 @@ services:
     volumes:
       - ../data/vmail:/var/vmail
       - ../data/dovecot:/config
+      - postfix_private:/var/spool/postfix/private
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  postfix_private:

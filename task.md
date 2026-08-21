@@ -1,89 +1,88 @@
-# W2.5 — Dovecot IMAP + Authentication
+# W2.6 — SMTP Submission :587 + SMTP AUTH
 
-## 0. Target Akhir W2.5
+## 0. Definition of Done
 
-Sebelum W2.5:
+Setelah W2.6:
 ```text
-SMTP -> Postfix -> Maildir
+                    MAIL CLIENT
+                 Outlook / Thunderbird
+                         │
+                         │ SMTP Submission
+                         │ TCP :587
+                         ▼
+                ┌─────────────────┐
+                │     Postfix     │
+                │  submission     │
+                └────────┬────────┘
+                         │
+                     SMTP AUTH
+                         │
+                         ▼
+                    Dovecot SASL
+                         │
+                         ▼
+                    PostgreSQL
+                         │
+                    Argon2id
+                         │
+                         ▼
+                  authenticated
+                         │
+                         ▼
+                    Postfix Queue
+                         │
+                         ▼
+                      Internet / Local Maildir
 ```
 
-Setelah W2.5:
+Inbound (:25) tetap:
 ```text
-                         MailOpen
-                            │
-                       PostgreSQL
-                     ┌──────┴──────┐
-                     │             │
-                  Postfix        Dovecot
-                     │             │
-                   SMTP           IMAP
-                     │             │
-                     └──────┬──────┘
-                            ▼
-                    /var/vmail/...
-                            │
-                            ▼
-                         Maildir
+Internet -> Postfix :25 (No AUTH) -> Maildir -> Dovecot -> IMAP :143
 ```
 
-Client (Outlook / Thunderbird / Webmail):
-```text
-Outlook / Thunderbird
-        │
-        │ IMAP (:143)
-        ▼
-     Dovecot
-        │
-        ├── Authentication
-        │       ↓
-        │   PostgreSQL (mailboxes.password_hash)
-        │       ↓
-        │   Argon2id verification
-        │
-        └── Mailbox access
-                ↓
-             Maildir++ (/var/vmail/<domain>/<localpart>/Maildir)
-```
+## Definition of Done Checklist
 
-## Definition of Done W2.5
-
-- [x] Architecture
-  - [x] Dovecot separated from MailOpen domain layer
-  - [x] PostgreSQL source of truth
-  - [x] Dedicated read-only DB role (`mailopen_dovecot`)
-  - [x] Maildir remains live storage (`vmail:vmail`, 5000:5000, 0750)
+- [x] SMTP
+  - [x] :25 inbound tetap bekerja
+  - [x] :25 open relay tetap blocked
+  - [x] :25 SMTP AUTH disabled
+- [x] Submission
+  - [x] :587 listening
+  - [x] :587 SMTP AUTH enabled
+  - [x] Authenticated submission works
+  - [x] Unauthenticated submission blocked
 - [x] Authentication
-  - [x] PostgreSQL passdb (Argon2id)
-  - [x] Case-insensitive username canonicalization
-  - [x] `active` required
-  - [x] `provisioning_status = 'ready'` required
-  - [x] Wrong password rejected (generic error, no enumeration)
-  - [x] Unknown user rejected
-  - [x] Suspended user rejected
-- [x] Userdb
-  - [x] UID 5000, GID 5000
-  - [x] Maildir derived from domain/localpart (`/var/vmail/%d/%n/Maildir`)
-  - [x] No mailbox path stored in DB
-- [x] IMAP
-  - [x] IMAP :143
-  - [x] LOGIN
-  - [x] SELECT INBOX
-  - [x] SEARCH
-  - [x] FETCH headers
-  - [x] FETCH body (reads email delivered in W2.4)
-  - [x] LOGOUT
-- [x] Filesystem
-  - [x] Maildir readable/writable by Dovecot
-  - [x] Ownership `vmail:vmail` (5000:5000)
-  - [x] Privilege separation maintained
-- [x] Config
-  - [x] `mailopen dovecot config generate`
-  - [x] `mailopen dovecot config validate`
-  - [x] Atomic deployment (`0640` credentials)
-  - [x] Reload only on config changes
-- [x] Doctor
-  - [x] `mailopen dovecot doctor`
-  - [x] `mailopen dovecot lookup user <email>`
-  - [x] `mailopen dovecot auth test <email> --password "<pass>"`
+  - [x] Dovecot SASL via Unix socket
+  - [x] PostgreSQL single source of truth
+  - [x] Argon2id verification
+  - [x] `active` + `ready` required
+  - [x] Wrong password rejected (535)
+  - [x] Suspended rejected
+  - [x] Pending rejected
+- [x] Sender Policy
+  - [x] Primary sender works (`ajar@example.com`)
+  - [x] Authorized alias works (`support@example.com`)
+  - [x] Unauthorized/spoofed sender rejected (`553 Sender address rejected`)
+- [x] Delivery
+  - [x] Authenticated -> local mailbox (delivered to Maildir)
+  - [x] Authenticated -> outbound queue (queued for remote delivery)
+  - [x] Queue ID generated
+- [x] Security
+  - [x] No plaintext credentials in logs
+  - [x] Read-only DB role (`mailopen_dovecot`)
+  - [x] SASL socket permissions safe (0660 / private)
+  - [x] No public SASL socket
+  - [x] Connection limits & baseline rate-limiting configured
+- [x] CLI & Doctor
+  - [x] `mailopen postfix submission config generate`
+  - [x] `mailopen postfix submission config validate`
+  - [x] `mailopen postfix submission doctor`
+  - [x] `mailopen postfix submission auth-test <email> --password "<pass>"`
 - [x] E2E
-  - [x] SMTP :25 -> Postfix -> Maildir -> Dovecot -> IMAP :143 -> Message fetched!
+  - [x] SMTP AUTH :587
+  - [x] MAIL FROM
+  - [x] RCPT TO
+  - [x] DATA
+  - [x] Queue generated
+  - [x] Local delivery to Maildir
+  - [x] IMAP sees submitted local message

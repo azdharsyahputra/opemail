@@ -1,6 +1,6 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA lookups, and Dovecot IMAP with native Maildir++ storage.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), Dovecot SASL authentication, and Dovecot IMAP (:143) with native Maildir++ storage.
 
 ## Architecture
 
@@ -14,14 +14,18 @@
                      │             │
                   Postfix        Dovecot
                      │             │
-                 SMTP (:25)    IMAP (:143)
-                     │             │
-                     └──────┬──────┘
-                            ▼
-                    /var/vmail/...
-                            │
-                            ▼
-                    Dovecot Maildir++
+            ┌────────┴────────┐  IMAP (:143)
+            │                 │    │
+       SMTP (:25)     Submission (:587)
+    (Server-to-Server) (SMTP AUTH SASL)
+            │                 │
+            └────────┬────────┘
+                     │
+                     ▼
+             /var/vmail/...
+                     │
+                     ▼
+             Dovecot Maildir++
 ```
 
 See [docs/architecture.md](docs/architecture.md) and [task.md](task.md) for full architectural details.
@@ -59,7 +63,7 @@ go build -o bin/mailopen ./cmd/mailopen
 # Create mailbox (auto-provisions Dovecot Maildir++)
 ./bin/mailopen mailbox create ajar@example.com --password "SecurePass123"
 
-# Update password
+# Update password (dynamic instant auth, zero reloads needed)
 ./bin/mailopen mailbox password set ajar@example.com --password "NewPass123"
 
 # List mailboxes with provisioning status
@@ -75,7 +79,7 @@ go build -o bin/mailopen ./cmd/mailopen
 ./bin/mailopen mailbox delete ajar@example.com
 ```
 
-#### Postfix Adapter & MTA (W2.4)
+#### Postfix Inbound MTA (W2.4)
 ```bash
 # Generate Postfix configuration and pgsql maps
 ./bin/mailopen postfix config generate
@@ -93,6 +97,24 @@ go build -o bin/mailopen ./cmd/mailopen
 
 # Reload Postfix service (only on config changes)
 ./bin/mailopen postfix reload
+```
+
+#### Postfix Submission & SMTP AUTH (W2.6)
+```bash
+# Generate Postfix submission configuration (:587 + Dovecot SASL)
+./bin/mailopen postfix submission config generate
+
+# Validate Postfix submission configuration
+./bin/mailopen postfix submission config validate
+
+# Run Postfix Submission Doctor diagnostics
+./bin/mailopen postfix submission doctor
+
+# Check Submission service listener status (:587)
+./bin/mailopen postfix submission status
+
+# Test SMTP AUTH against Dovecot SASL & PostgreSQL (passwords never logged)
+./bin/mailopen postfix submission auth-test ajar@example.com --password "SecurePass123"
 ```
 
 #### Dovecot IMAP & Authentication Adapter (W2.5)
