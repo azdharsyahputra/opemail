@@ -50,11 +50,10 @@ func TestIntegration_Submission(t *testing.T) {
 	}
 	defer db.Close()
 
-	_ = database.DropAllTables(db)
-
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
 	}
+
 
 
 	tempVmailDir, err := os.MkdirTemp("", "openmail-submission-vmail-*")
@@ -79,10 +78,12 @@ func TestIntegration_Submission(t *testing.T) {
 	senderAuthorizer := postfix.NewPostgresSenderAuthorizer(db)
 
 	// 1. Create Domain
+	_ = domainSvc.Delete(ctx, "example.com")
 	dom, err := domainSvc.Create(ctx, "example.com")
 	if err != nil {
 		t.Fatalf("failed to create domain: %v", err)
 	}
+
 
 	// 2. Create Mailbox with Argon2id password
 	mb, err := mailboxSvc.Create(ctx, "ajar@example.com", "SecurePass123", 1073741824)

@@ -25,8 +25,16 @@ var mailboxCreateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 
+		passStdin, _ := cmd.Flags().GetBool("password-stdin")
 		password := mailboxPassword
-		if password == "" {
+		if passStdin {
+			var input string
+			_, err := fmt.Fscanln(os.Stdin, &input)
+			if err != nil && input == "" {
+				return fmt.Errorf("failed to read password from stdin: %w", err)
+			}
+			password = input
+		} else if password == "" {
 			// If not specified via flag, default to a secure default
 			password = "Password123!"
 			fmt.Println("Note: No password provided via --password, using default test password 'Password123!'")
@@ -61,9 +69,9 @@ var mailboxProvisionCmd = &cobra.Command{
 		}
 
 		if alreadyProvisioned {
-			fmt.Println("Mailbox already provisioned")
+			fmt.Printf("Mailbox %s already provisioned.\n", email)
 		} else {
-			fmt.Printf("Mailbox %s provisioned successfully\n", email)
+			fmt.Printf("Mailbox %s successfully provisioned.\n", email)
 		}
 		return nil
 	},
@@ -71,39 +79,34 @@ var mailboxProvisionCmd = &cobra.Command{
 
 var mailboxDoctorCmd = &cobra.Command{
 	Use:   "doctor <email>",
-	Short: "Inspect health and filesystem provisioning of a mailbox",
+	Short: "Inspect Maildir directory and permissions for a mailbox",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
 		report, err := mailboxService.Doctor(cmd.Context(), email)
 		if err != nil {
+
 			return err
 		}
 
-		fmt.Println("Mailbox Doctor")
-		fmt.Println("──────────────────────────────")
-		fmt.Println()
-		fmt.Println("Mailbox")
-		fmt.Printf("  Email       %s\n", report.Email)
-		fmt.Printf("  Status      %s\n", report.Status)
-		fmt.Printf("  Provision   %s\n", report.ProvisionStatus)
-		fmt.Println()
-		fmt.Println("Filesystem")
-		fmt.Printf("  Root        %s\n", report.Root)
-		fmt.Printf("  Maildir     %s\n", checkMark(report.MaildirExists.Passed))
-		fmt.Printf("  cur         %s\n", checkMark(report.CurExists.Passed))
-		fmt.Printf("  new         %s\n", checkMark(report.NewExists.Passed))
-		fmt.Printf("  tmp         %s\n", checkMark(report.TmpExists.Passed))
-		fmt.Printf("  Owner       %s %s\n", report.Ownership.Message, checkMark(report.Ownership.Passed))
-		fmt.Printf("  Permission  %s %s\n", report.Permission.Message, checkMark(report.Permission.Passed))
-		fmt.Println()
+		fmt.Printf("Mailbox Doctor Report for %s\n", report.Email)
+		fmt.Println("========================================")
+		fmt.Printf("Database Status:      %s\n", report.Status)
+		fmt.Printf("Provisioning Status:  %s\n", report.ProvisionStatus)
+		fmt.Printf("Root Path:            %s\n\n", report.Root)
+
+		fmt.Printf("[%s] Maildir Directory:  %s\n", checkMark(report.MaildirExists.Passed), report.MaildirExists.Message)
+		fmt.Printf("[%s] Cur Subdirectory:   %s\n", checkMark(report.CurExists.Passed), report.CurExists.Message)
+		fmt.Printf("[%s] New Subdirectory:   %s\n", checkMark(report.NewExists.Passed), report.NewExists.Message)
+		fmt.Printf("[%s] Tmp Subdirectory:   %s\n", checkMark(report.TmpExists.Passed), report.TmpExists.Message)
+		fmt.Printf("[%s] Directory Ownership:%s\n", checkMark(report.Ownership.Passed), report.Ownership.Message)
+		fmt.Printf("[%s] Directory Mode:     %s\n\n", checkMark(report.Permission.Passed), report.Permission.Message)
 
 		if report.Healthy {
 			fmt.Println("Result: HEALTHY")
 		} else {
-			fmt.Println("Result: UNHEALTHY / DEGRADED")
+			fmt.Println("Result: UNHEALTHY / ISSUES DETECTED")
 		}
-
 		return nil
 	},
 }
@@ -154,11 +157,20 @@ var mailboxPasswordSetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		email := args[0]
-		if mailboxPassword == "" {
-			return fmt.Errorf("please provide password via --password")
+		passStdin, _ := cmd.Flags().GetBool("password-stdin")
+		password := mailboxPassword
+		if passStdin {
+			var input string
+			_, err := fmt.Fscanln(os.Stdin, &input)
+			if err != nil && input == "" {
+				return fmt.Errorf("failed to read password from stdin: %w", err)
+			}
+			password = input
+		} else if password == "" {
+			return fmt.Errorf("please provide password via --password or --password-stdin")
 		}
 
-		err := mailboxService.SetPassword(cmd.Context(), email, mailboxPassword)
+		err := mailboxService.SetPassword(cmd.Context(), email, password)
 		if err != nil {
 			return err
 		}
@@ -177,9 +189,11 @@ func checkMark(passed bool) string {
 
 func init() {
 	mailboxCreateCmd.Flags().StringVarP(&mailboxPassword, "password", "p", "", "Password for the mailbox (min 8 chars)")
+	mailboxCreateCmd.Flags().Bool("password-stdin", false, "Read password from standard input (prevents exposure in process table)")
 	mailboxCreateCmd.Flags().Int64VarP(&mailboxQuota, "quota", "q", 1073741824, "Quota in bytes (default 1GB)")
 
 	mailboxPasswordSetCmd.Flags().StringVarP(&mailboxPassword, "password", "p", "", "New password for the mailbox (min 8 chars)")
+	mailboxPasswordSetCmd.Flags().Bool("password-stdin", false, "Read password from standard input (prevents exposure in process table)")
 
 	mailboxPasswordCmd.AddCommand(mailboxPasswordSetCmd)
 
@@ -190,4 +204,3 @@ func init() {
 	mailboxCmd.AddCommand(mailboxDeleteCmd)
 	mailboxCmd.AddCommand(mailboxPasswordCmd)
 }
-

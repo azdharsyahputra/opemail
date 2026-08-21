@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -11,8 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/azdharsyahputra/openmail/internal/database"
 	"github.com/azdharsyahputra/openmail/internal/dkim"
+	"github.com/azdharsyahputra/openmail/internal/domain"
+	"github.com/azdharsyahputra/openmail/internal/mailbox"
+	"github.com/azdharsyahputra/openmail/internal/provisioning"
+	"github.com/google/uuid"
 )
+
 
 func TestIntegration_DKIM(t *testing.T) {
 	// 1. Check live submission port :587
@@ -62,7 +69,28 @@ func TestIntegration_DKIM(t *testing.T) {
 		}
 	})
 
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://mailopen:mailopen@localhost:5433/mailopen?sslmode=disable"
+	}
+	db, err := database.NewPostgresDB(dbURL)
+	if err == nil {
+		defer db.Close()
+		domRepo := domain.NewPostgresRepository(db)
+		mbRepo := mailbox.NewPostgresRepository(db)
+		prov, _ := provisioning.NewFilesystemProvisioner(os.TempDir(), 5000, 5000)
+		mbSvc := mailbox.NewService(mbRepo, domRepo, prov)
+		ctx := context.Background()
+		_ = domRepo.Create(ctx, &domain.Domain{ID: uuid.New(), Name: "example.com", Status: "active"})
+		_, _ = mbSvc.Create(ctx, "ajar@example.com", "SecurePass123", 1073741824)
+
+		_, _, _ = mbSvc.Provision(ctx, "ajar@example.com")
+		_, _ = mbSvc.Create(ctx, "bob@example.com", "SecurePass123", 1073741824)
+		_, _, _ = mbSvc.Provision(ctx, "bob@example.com")
+	}
+
 	t.Run("Outbound DKIM Signing: :587 Submission -> OpenDKIM Milter -> DKIM-Signature", func(t *testing.T) {
+
 		c, err := smtp.Dial("127.0.0.1:587")
 		if err != nil {
 			t.Fatalf("failed to connect to :587: %v", err)

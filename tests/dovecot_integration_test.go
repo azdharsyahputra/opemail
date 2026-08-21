@@ -35,14 +35,10 @@ func TestIntegration_Dovecot(t *testing.T) {
 		t.Skipf("Skipping integration test: PostgreSQL unavailable (%v)", err)
 		return
 	}
-	defer db.Close()
-
-	_ = database.DropAllTables(db)
-
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
 	}
-	defer database.DropAllTables(db)
+
 
 	tempVmailDir, err := os.MkdirTemp("", "openmail-dovecot-vmail-*")
 	if err != nil {
@@ -65,10 +61,12 @@ func TestIntegration_Dovecot(t *testing.T) {
 	dovecotSvc := dovecot.NewService(dovecotRepo, dovecot.NewSystemProvisioner("/tmp"))
 
 	// 1. Create Domain
+	_ = domainSvc.Delete(ctx, "example.com")
 	_, err = domainSvc.Create(ctx, "example.com")
 	if err != nil {
 		t.Fatalf("failed to create domain: %v", err)
 	}
+
 
 	// 2. Create Mailbox with Argon2id password
 	mb, err := mailboxSvc.Create(ctx, "ajar@example.com", "SecurePass123", 1073741824)

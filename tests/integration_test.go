@@ -37,9 +37,6 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 	}
 	defer db.Close()
 
-	// Clean up database tables before test
-	_ = database.DropAllTables(db)
-
 	// Run migrations up (runs 000001, 000002, 000003, 000004, 000005)
 	if err := database.RunMigrationsUp(db); err != nil {
 		t.Fatalf("failed to run migrations up: %v", err)
@@ -80,11 +77,13 @@ func TestIntegration_PostgreSQL(t *testing.T) {
 	messageSvc := message.NewService(messageRepo, mailboxRepo, blobStore)
 	postfixSvc := postfix.NewService(postfixRepo, postfix.NewSystemProvisioner("/tmp"))
 
-	// 1. Create Domain
+	// 1. Create Domain (active)
+	_ = domainSvc.Delete(ctx, "example.com")
 	dom, err := domainSvc.Create(ctx, "example.com")
 	if err != nil {
 		t.Fatalf("expected no error creating domain, got %v", err)
 	}
+
 	if dom.Name != "example.com" {
 		t.Errorf("expected domain name example.com, got %s", dom.Name)
 	}

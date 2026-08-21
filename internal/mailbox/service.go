@@ -42,7 +42,11 @@ type Service interface {
 	SetPassword(ctx context.Context, email, newPassword string) error
 	Delete(ctx context.Context, email string) error
 	VerifyPassword(password, encodedHash string) (bool, error)
+	Authenticate(ctx context.Context, email, password string) (*Mailbox, error)
+	Suspend(ctx context.Context, id uuid.UUID) error
+	Resume(ctx context.Context, id uuid.UUID) error
 }
+
 
 
 type service struct {
@@ -279,9 +283,43 @@ func (s *service) Delete(ctx context.Context, email string) error {
 	return s.mailboxRepo.Delete(ctx, email)
 }
 
+
+func (s *service) Authenticate(ctx context.Context, email, password string) (*Mailbox, error) {
+
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" || !isValidEmail(email) {
+		return nil, ErrInvalidEmail
+	}
+
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if mb.Status != "active" {
+		return nil, ErrAuthenticationFailed
+	}
+
+	valid, err := VerifyPassword(password, mb.PasswordHash)
+	if err != nil || !valid {
+		return nil, ErrAuthenticationFailed
+	}
+
+	return mb, nil
+}
+
+func (s *service) Suspend(ctx context.Context, id uuid.UUID) error {
+	return s.mailboxRepo.UpdateStatus(ctx, id, "suspended")
+}
+
+func (s *service) Resume(ctx context.Context, id uuid.UUID) error {
+	return s.mailboxRepo.UpdateStatus(ctx, id, "active")
+}
+
 func (s *service) VerifyPassword(password, encodedHash string) (bool, error) {
 	return VerifyPassword(password, encodedHash)
 }
+
 
 func isValidEmail(email string) bool {
 	if len(email) == 0 || len(email) > 254 {

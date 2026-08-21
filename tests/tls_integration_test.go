@@ -21,6 +21,20 @@ import (
 	"github.com/google/uuid"
 )
 
+func dialSMTPWithRetry(addr string) (*smtp.Client, error) {
+	var c *smtp.Client
+	var err error
+	for i := 0; i < 5; i++ {
+		c, err = smtp.Dial(addr)
+		if err == nil {
+			return c, nil
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+	return nil, err
+}
+
+
 
 
 func TestIntegration_TLS(t *testing.T) {
@@ -115,7 +129,7 @@ func TestIntegration_TLS(t *testing.T) {
 
 	// 3. Test Postfix Submission :587 STARTTLS & Auth Enforcement
 	t.Run("Submission :587: Plaintext AUTH before STARTTLS -> BLOCKED", func(t *testing.T) {
-		c, err := smtp.Dial("127.0.0.1:587")
+		c, err := dialSMTPWithRetry("127.0.0.1:587")
 		if err != nil {
 			t.Fatalf("connect :587 failed: %v", err)
 		}
@@ -129,11 +143,12 @@ func TestIntegration_TLS(t *testing.T) {
 	})
 
 	t.Run("Submission :587: STARTTLS -> AUTH -> Mail Submit -> PASS", func(t *testing.T) {
-		c, err := smtp.Dial("127.0.0.1:587")
+		c, err := dialSMTPWithRetry("127.0.0.1:587")
 		if err != nil {
 			t.Fatalf("connect :587 failed: %v", err)
 		}
 		defer c.Close()
+
 
 		if err := c.StartTLS(insecureTLS); err != nil {
 			t.Fatalf("STARTTLS failed on :587: %v", err)

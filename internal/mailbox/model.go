@@ -8,12 +8,14 @@ import (
 )
 
 var (
-	ErrMailboxNotFound = errors.New("mailbox not found")
-	ErrMailboxExists   = errors.New("mailbox already exists")
-	ErrInvalidEmail    = errors.New("invalid email address format")
-	ErrInvalidPassword = errors.New("password must be at least 8 characters long")
-	ErrDomainNotFound  = errors.New("domain for mailbox not found")
+	ErrMailboxNotFound       = errors.New("mailbox not found")
+	ErrMailboxExists         = errors.New("mailbox already exists")
+	ErrInvalidEmail          = errors.New("invalid email address format")
+	ErrInvalidPassword       = errors.New("password must be at least 8 characters long")
+	ErrDomainNotFound        = errors.New("domain for mailbox not found")
+	ErrAuthenticationFailed  = errors.New("authentication failed")
 )
+
 
 const (
 	ProvisioningPending        = "pending"

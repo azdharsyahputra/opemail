@@ -61,10 +61,12 @@ func TestIntegration_AbuseAndRateLimiting(t *testing.T) {
 	abuseSvc := abuse.NewService(abuseRepo, mailboxRepo)
 
 	testDomain := "abuse-check.com"
+	_ = domainSvc.Delete(ctx, testDomain)
 	_, _ = domainSvc.Create(ctx, testDomain)
 
 	testMailbox := "abuse-test@" + testDomain
 	_, _ = mailboxSvc.Create(ctx, testMailbox, "StrongPass123!", 1073741824)
+
 
 
 	t.Run("Mailbox Limits CRUD: Default, Update, Retrieve", func(t *testing.T) {

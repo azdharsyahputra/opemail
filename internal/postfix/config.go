@@ -106,9 +106,10 @@ milter_default_action = accept
 milter_protocol = 6
 
 # Baseline connection and message rate limits
-smtpd_client_connection_count_limit = 50
-smtpd_client_connection_rate_limit = 30
-smtpd_client_message_rate_limit = 60
+smtpd_client_connection_count_limit = 200
+smtpd_client_connection_rate_limit = 300
+smtpd_client_message_rate_limit = 300
+smtpd_client_event_limit_exceptions = $mynetworks, 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
 `,
 		opts.Hostname,
 		domainsCFPath,
@@ -148,8 +149,9 @@ submission inet n       -       n       -       -       smtpd
   -o smtpd_sender_restrictions=reject_sender_login_mismatch,permit_sasl_authenticated,reject
   -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
   -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
-  -o smtpd_client_connection_count_limit=50
-  -o smtpd_client_connection_rate_limit=30
+  -o smtpd_client_connection_count_limit=200
+  -o smtpd_client_connection_rate_limit=300
+
 
 
 pickup    unix  n       -       n       60      1       pickup
