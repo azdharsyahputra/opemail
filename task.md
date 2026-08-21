@@ -1,4 +1,4 @@
-# W2.7 — TLS / STARTTLS + Secure Mail Access
+# W2.8 — Mail Identity, DKIM Signing, SPF & DMARC
 
 ## 0. Target Architecture
 
@@ -7,85 +7,90 @@
                             │
              ┌──────────────┴──────────────┐
              │                             │
-           TCP :25                       TCP :587
+          INBOUND                       OUTBOUND
              │                             │
-        SMTP / MTA                    Submission
+             ▼                             ▼
+        Postfix :25                  Postfix :587
              │                             │
-        STARTTLS opt.                 STARTTLS (REQUIRED)
+             │                         STARTTLS
+             │                             │
+             │                         SMTP AUTH
+             │                             │
+             │                             ▼
+             │                       Outbound Queue
+             │                             │
+             │                             ▼
+             │                         OpenDKIM (milter)
+             │                             │
+             │                       DKIM Signature (d=example.com, s=mailopen2026)
              │                             │
              └──────────────┬──────────────┘
                             │
-                           TLS
+                            ▼
+                         Internet
                             │
-                         Postfix
-                            │
-                       Dovecot SASL
-                            │
-                       PostgreSQL
-
-
-                         TCP :993                   TCP :143
-                            │                          │
-                        IMAPS (TLS)                 STARTTLS
-                            │                          │
-                            └───────────┬──────────────┘
-                                        │
-                                     Dovecot
-                                        │
-                                   PostgreSQL
+                 ┌──────────┼──────────┐
+                 ▼          ▼          ▼
+                SPF       DKIM       DMARC
 ```
 
-Client configuration:
-```text
-SMTP Submission:
-  host: mail.example.com
-  port: 587
-  security: STARTTLS
-  auth: required
-
-IMAP:
-  host: mail.example.com
-  port: 993 (IMAPS) / 143 (STARTTLS)
-  security: SSL/TLS / STARTTLS
-  auth: required (plaintext auth blocked before TLS)
-```
+MailOpen Control Plane:
+- **Domain**: SPF policy, DKIM selector, DMARC policy
+- **DKIM Key Manager**: Generate, rotate, activate, revoke
+- **DNS Verification & Doctor**: SPF, DKIM, DMARC
 
 ---
 
 ## 1. Definition of Done Checklist
 
-- [ ] **TLS Abstraction & Validation (`internal/tls`)**
-  - [ ] Model `Certificate` and `CertificateReport`
-  - [ ] PEM x509 parser & Private key parser (RSA/ECDSA/Ed25519)
-  - [ ] Public key / Private key match verification
-  - [ ] SAN Hostname validation (`cert.VerifyHostname`)
-  - [ ] Expiration validation (>30d HEALTHY, 8-30d WARNING, 1-7d CRITICAL, <=0d EXPIRED)
-  - [ ] Filesystem provider (`/etc/mailopen/tls/<hostname>/`)
-  - [ ] Atomic certificate installation (`.tmp` -> `fsync` -> `chmod` -> `rename`)
-  - [ ] Permissions (`0750` dir, `0644` fullchain.pem, `0600` privkey.pem)
-  - [ ] Safety rollback (invalid cert never replaces active cert)
-- [ ] **Postfix TLS Hardening**
-  - [ ] Port 25: STARTTLS offered (`may`), SMTP AUTH DISABLED
-  - [ ] Port 587: STARTTLS required (`encrypt`), SMTP AUTH required
-  - [ ] Plaintext AUTH before TLS rejected on :587
-  - [ ] Protocols: TLSv1.2 & TLSv1.3 enabled, TLSv1.0 & TLSv1.1 disabled
-- [ ] **Dovecot TLS Hardening**
-  - [ ] Port 993: Implicit TLS (IMAPS)
-  - [ ] Port 143: STARTTLS enabled, plaintext auth before TLS blocked (`ssl = required`)
-  - [ ] Protocols: `ssl_min_protocol = TLSv1.2`
-  - [ ] Certificate & key paths configured
-- [ ] **CLI Subcommands**
-  - [ ] `mailopen tls install --hostname <host> --cert <cert> --key <key>`
-  - [ ] `mailopen tls validate --hostname <host>`
-  - [ ] `mailopen tls status --hostname <host>`
-  - [ ] `mailopen tls doctor --hostname <host>`
-- [ ] **Testing & Diagnostics**
-  - [ ] Unit tests for cert/key matching, expiration, hostname verification
-  - [ ] `tests/tls_integration_test.go` real socket testing:
-    - [ ] Certificate valid / expired / mismatch / wrong hostname
-    - [ ] TLS 1.2 / 1.3 / 1.0 blocked / 1.1 blocked
-    - [ ] Port 587: STARTTLS + AUTH after TLS works, AUTH before TLS fails
-    - [ ] Port 25: STARTTLS works, AUTH fails
-    - [ ] Port 993: IMAPS TLS connect + LOGIN works
-    - [ ] Port 143: LOGIN before STARTTLS fails, LOGIN after STARTTLS works
-    - [ ] Full E2E mail submission (:587 STARTTLS) -> local delivery -> IMAPS (:993 TLS fetch)
+- [ ] **W2.8.1 DKIM Domain Model + Database Migrations**
+  - [ ] Migration `000006_dkim.up.sql` (tables `domain_dkim` & `domain_mail_policy`)
+  - [ ] Migration `000006_dkim.down.sql`
+  - [ ] Model `DKIMKey`, `DKIMStatus` (pending, active, revoked), `DomainMailPolicy`
+  - [ ] Repository interface and PostgreSQL implementation
+- [ ] **W2.8.2 Secure DKIM Keystore**
+  - [ ] Storage path `/etc/mailopen/dkim/<domain>/<selector>/private.key` (NOT in PostgreSQL)
+  - [ ] Directory permissions `0750`, private key permissions `0600`
+  - [ ] Atomic private key installation (`.tmp` -> `fsync` -> `chmod 0600` -> `rename`)
+- [ ] **W2.8.3 RSA-2048 Key Generation & Public DNS Record**
+  - [ ] Cryptographic RSA-2048 generation
+  - [ ] Base64 DER public key extraction
+  - [ ] DNS TXT format `v=DKIM1; k=rsa; p=PUBLIC_KEY`
+- [ ] **W2.8.4 Selector Validation & Lifecycle**
+  - [ ] Selector format validation `^[a-z0-9][a-z0-9._-]{0,62}$` (rejects path traversal `../`)
+  - [ ] Lifecycle: generate -> pending -> DNS verified -> active -> rotated -> revoked
+- [ ] **W2.8.5 OpenDKIM Provisioning & Milter Integration**
+  - [ ] OpenDKIM config generator (`opendkim.conf`, `KeyTable`, `SigningTable`, `TrustedHosts`)
+  - [ ] Unix socket `/var/spool/postfix/private/opendkim`
+  - [ ] Postfix `smtpd_milters` & `non_smtpd_milters` integration
+- [ ] **W2.8.6 SPF & DMARC Policies**
+  - [ ] SPF policy generator & syntax validator (`v=spf1 ...`)
+  - [ ] DMARC policy generator & syntax validator (`v=DMARC1; p=none ...`)
+  - [ ] Domain mail policy persistence in PostgreSQL
+- [ ] **W2.8.7 DNS Verification & Domain Doctor**
+  - [ ] DKIM DNS verification against local public key
+  - [ ] SPF DNS verification
+  - [ ] DMARC DNS verification
+  - [ ] `mailopen domain doctor <domain>` comprehensive report
+- [ ] **W2.8.8 CLI Subcommands**
+  - [ ] `mailopen dkim key generate <domain>`
+  - [ ] `mailopen dkim key list <domain>`
+  - [ ] `mailopen dkim key activate <domain> <selector>`
+  - [ ] `mailopen dkim key revoke <domain> <selector>`
+  - [ ] `mailopen dkim verify <domain>`
+  - [ ] `mailopen dkim doctor <domain>`
+  - [ ] `mailopen domain spf show / set / verify <domain>`
+  - [ ] `mailopen domain dmarc show / set / verify <domain>`
+  - [ ] `mailopen domain doctor <domain>`
+  - [ ] `mailopen postfix dkim status`
+- [ ] **W2.8.9 Test Matrices & E2E Outbound DKIM Signing**
+  - [ ] Unit tests for keygen, keystore, selector validation, SPF/DMARC parsers
+  - [ ] `tests/dkim_integration_test.go`:
+    - [ ] Keygen & keystore file permissions (`0600`/`0750`)
+    - [ ] OpenDKIM milter signing on :587 submission
+    - [ ] Raw message contains valid `DKIM-Signature` (`d=`, `s=`, `a=rsa-sha256`)
+    - [ ] Sender authorization integration
+    - [ ] Key rotation & revocation safety
+  - [ ] `tests/dns_integration_test.go`:
+    - [ ] SPF & DMARC validation
+    - [ ] Domain Doctor report

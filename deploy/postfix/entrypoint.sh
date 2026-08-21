@@ -10,12 +10,26 @@ fi
 
 # Ensure /var/vmail exists and has correct ownership (vmail:vmail 5000:5000 0750)
 mkdir -p /var/vmail
-chown -R vmail:vmail /var/vmail
-chmod 0750 /var/vmail
+chown -R vmail:vmail /var/vmail 2>/dev/null || true
+chmod 0750 /var/vmail 2>/dev/null || true
 
 # Fix postfix permissions & generate aliases db if needed
 postfix set-permissions 2>/dev/null || true
 newaliases 2>/dev/null || true
+
+# Prepare opendkim runtime directories & socket path
+mkdir -p /var/run/opendkim /var/spool/postfix/private
+chown -R postfix:postfix /var/run/opendkim /var/spool/postfix/private 2>/dev/null || true
+chmod 0770 /var/run/opendkim 2>/dev/null || true
+chmod 0750 /var/spool/postfix/private 2>/dev/null || true
+
+# Start OpenDKIM if config exists
+if [ -f "/etc/mailopen/opendkim/opendkim.conf" ]; then
+    echo "Starting OpenDKIM..."
+    rm -f /var/run/opendkim/opendkim.pid /var/spool/postfix/private/opendkim
+    opendkim -x /etc/mailopen/opendkim/opendkim.conf || true
+fi
+
 
 # Start Postfix in foreground
 exec postfix start-fg

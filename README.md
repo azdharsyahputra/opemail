@@ -1,6 +1,6 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), Dovecot SASL authentication, and Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening and native Maildir++ storage.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, and Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening and native Maildir++ storage.
 
 ## Architecture
 
@@ -9,40 +9,39 @@
                             │
              ┌──────────────┴──────────────┐
              │                             │
-           TCP :25                       TCP :587
+          INBOUND                       OUTBOUND
              │                             │
-        SMTP / MTA                    Submission
+             ▼                             ▼
+        Postfix :25                  Postfix :587
              │                             │
-        STARTTLS opt.                 STARTTLS (REQUIRED)
+             │                         STARTTLS (Mandatory)
+             │                             │
+             │                         SMTP AUTH (Dovecot SASL)
+             │                             │
+             │                             ▼
+             │                       Outbound Queue
+             │                             │
+             │                             ▼
+             │                         OpenDKIM (Milter)
+             │                             │
+             │                       DKIM Signature (d=example.com, s=mailopen2026)
              │                             │
              └──────────────┬──────────────┘
                             │
-                           TLS
+                            ▼
+                         Internet
                             │
-                         Postfix
-                            │
-                       Dovecot SASL
-                            │
-                       PostgreSQL
-
-
-                         TCP :993                   TCP :143
-                            │                          │
-                        IMAPS (TLS)                 STARTTLS
-                            │                          │
-                            └───────────┬──────────────┘
-                                        │
-                                     Dovecot
-                                        │
-                                   PostgreSQL
+                 ┌──────────┼──────────┐
+                 ▼          ▼          ▼
+                SPF       DKIM       DMARC
 ```
 
 Client Configuration:
-- **SMTP Submission**: `mail.example.com:587` | Security: `STARTTLS` (Mandatory) | Auth: `Required`
+- **SMTP Submission**: `mail.example.com:587` | Security: `STARTTLS` (Mandatory) | Auth: `Required` | Outbound: `DKIM Signed`
 - **IMAP Secure**: `mail.example.com:993` | Security: `SSL/TLS` (IMAPS) | Auth: `Required`
 - **IMAP Legacy/Compatible**: `mail.example.com:143` | Security: `STARTTLS` | Plaintext Auth: `BLOCKED`
 
-See [docs/architecture.md](docs/architecture.md) and [task.md](task.md) for full architectural details.
+See [docs/architecture.md](docs/architecture.md), [docs/deliverability.md](docs/deliverability.md), and [task.md](task.md) for full architectural details.
 
 ## Quick Start
 
@@ -62,6 +61,44 @@ go build -o bin/mailopen ./cmd/mailopen
 ```
 
 ### 4. CLI Usage Examples
+
+#### Mail Identity, DKIM, SPF & DMARC (W2.8)
+```bash
+# Generate RSA-2048 DKIM key and prepare DNS TXT record
+./bin/mailopen dkim key generate example.com --selector mailopen2026
+
+# List all DKIM keys and statuses for a domain
+./bin/mailopen dkim key list example.com
+
+# Verify DKIM DNS record publication against local private key
+./bin/mailopen dkim verify example.com --selector mailopen2026
+
+# Activate DKIM key for live outbound email signing
+./bin/mailopen dkim key activate example.com mailopen2026
+
+# Revoke DKIM key
+./bin/mailopen dkim key revoke example.com mailopen2026
+
+# Run comprehensive DKIM Doctor diagnostics
+./bin/mailopen dkim doctor example.com
+
+# Manage SPF policies
+./bin/mailopen domain spf show example.com
+./bin/mailopen domain spf set example.com --policy "v=spf1 mx ip4:203.0.113.10 -all"
+./bin/mailopen domain spf verify example.com
+
+# Manage DMARC policies
+./bin/mailopen domain dmarc show example.com
+./bin/mailopen domain dmarc set example.com --policy "v=DMARC1; p=none; rua=mailto:dmarc@example.com"
+./bin/mailopen domain dmarc verify example.com
+
+# Run full Mail Domain Doctor (MX, A, SPF, DKIM, DMARC, TLS, SMTP, IMAP)
+./bin/mailopen domain doctor example.com
+
+# Generate OpenDKIM milter configuration and check socket status
+./bin/mailopen postfix dkim generate
+./bin/mailopen postfix dkim status
+```
 
 #### TLS / STARTTLS Certificate Management (W2.7)
 ```bash

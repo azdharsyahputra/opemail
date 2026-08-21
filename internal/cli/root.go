@@ -7,8 +7,10 @@ import (
 
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/database"
+	"github.com/azdharsyahputra/openmail/internal/dkim"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/dovecot"
+
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
 	"github.com/azdharsyahputra/openmail/internal/postfix"
@@ -28,6 +30,8 @@ var (
 	postfixService postfix.Service
 	dovecotRepo    dovecot.Repository
 	dovecotService dovecot.Service
+	dkimRepo       dkim.Repository
+	dkimService    dkim.Service
 )
 
 var rootCmd = &cobra.Command{
@@ -66,12 +70,16 @@ var rootCmd = &cobra.Command{
 		messageRepo = message.NewPostgresRepository(db)
 		postfixRepo = postfix.NewPostgresRepository(db)
 		dovecotRepo = dovecot.NewPostgresRepository(db)
+		dkimRepo = dkim.NewPostgresRepository(db)
 
 		postfixProv := postfix.NewSystemProvisioner(cfg.PostfixConfigDir)
 		postfixService = postfix.NewService(postfixRepo, postfixProv)
 
 		dovecotProv := dovecot.NewSystemProvisioner(cfg.DovecotConfigDir)
 		dovecotService = dovecot.NewService(dovecotRepo, dovecotProv)
+
+		dkimKeystore := dkim.NewFilesystemKeystore(cfg.DKIMBaseDir)
+		dkimService = dkim.NewService(dkimRepo, domainRepo, dkimKeystore)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo, prov)
@@ -103,5 +111,7 @@ func init() {
 	rootCmd.AddCommand(storageCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(tlsCmd)
+	rootCmd.AddCommand(dkimCmd)
 }
+
 

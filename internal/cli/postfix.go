@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/azdharsyahputra/openmail/internal/config"
+	"github.com/azdharsyahputra/openmail/internal/dkim"
 	"github.com/azdharsyahputra/openmail/internal/postfix"
 	"github.com/spf13/cobra"
+
 )
 
 
@@ -358,6 +360,82 @@ var postfixSubmissionAuthTestCmd = &cobra.Command{
 	},
 }
 
+var postfixDKIMCmd = &cobra.Command{
+	Use:   "dkim",
+	Short: "Postfix DKIM milter status and OpenDKIM configuration",
+}
+
+var postfixDKIMStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Check Postfix OpenDKIM milter socket status",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("Postfix OpenDKIM Milter Status")
+		fmt.Println("────────────────────────────────")
+		fmt.Printf("Socket Path:  %s\n", cfg.OpenDKIMSocket)
+
+		ok, msg := dkim.CheckMilterSocket(cfg.OpenDKIMSocket)
+		if ok {
+			fmt.Println("Socket:       ✓ AVAILABLE")
+			fmt.Println("Milter State: READY (Signing outbound)")
+		} else {
+			fmt.Printf("Socket:       ✗ %s\n", msg)
+			fmt.Println("Milter State: NOT REACHABLE")
+		}
+		return nil
+	},
+}
+
+var postfixDKIMGenerateCmd = &cobra.Command{
+	Use:   "generate",
+	Short: "Generate OpenDKIM configuration, KeyTable, and SigningTable",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+
+		domains, err := domainService.List(cmd.Context())
+		if err != nil {
+			return err
+		}
+
+		var activeKeys []*dkim.DKIMKey
+		for _, d := range domains {
+			keys, err := dkimService.ListKeys(cmd.Context(), d.Name)
+			if err == nil {
+				activeKeys = append(activeKeys, keys...)
+			}
+		}
+
+		opts := dkim.OpenDKIMConfigOptions{
+			ConfigDir:    cfg.OpenDKIMConfigDir,
+			DKIMBaseDir:  "/etc/mailopen/dkim",
+			SocketPath:   cfg.OpenDKIMSocket,
+			ActiveKeys:   activeKeys,
+			TrustedHosts: []string{"127.0.0.1", "::1", "localhost", cfg.PostfixHostname},
+		}
+
+		if err := dkim.WriteOpenDKIMConfigsAtomically(opts); err != nil {
+			return err
+		}
+
+		fmt.Println("OpenDKIM configuration generated successfully:")
+		fmt.Printf("  Target Directory: %s\n", cfg.OpenDKIMConfigDir)
+		fmt.Println("  Files generated:")
+		fmt.Println("    - opendkim.conf")
+		fmt.Println("    - KeyTable")
+		fmt.Println("    - SigningTable")
+		fmt.Println("    - TrustedHosts")
+		return nil
+	},
+}
+
+
 func init() {
 	postfixConfigGenerateCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target output directory for config files")
 	postfixConfigGenerateCmd.Flags().StringVar(&postfixTargetConfigPath, "target-path", "", "Target config path prefix used in main.cf (e.g. /etc/postfix)")
@@ -383,9 +461,15 @@ func init() {
 	postfixSubmissionCmd.AddCommand(postfixSubmissionStatusCmd)
 	postfixSubmissionCmd.AddCommand(postfixSubmissionAuthTestCmd)
 
+	postfixDKIMCmd.AddCommand(postfixDKIMStatusCmd)
+	postfixDKIMCmd.AddCommand(postfixDKIMGenerateCmd)
+
 	postfixCmd.AddCommand(postfixConfigCmd)
 	postfixCmd.AddCommand(postfixReloadCmd)
 	postfixCmd.AddCommand(postfixDoctorCmd)
 	postfixCmd.AddCommand(postfixLookupCmd)
 	postfixCmd.AddCommand(postfixSubmissionCmd)
+	postfixCmd.AddCommand(postfixDKIMCmd)
 }
+
+

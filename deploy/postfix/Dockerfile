@@ -1,6 +1,6 @@
 FROM alpine:3.19
 
-RUN apk add --no-cache postfix postfix-pgsql bash perl ca-certificates
+RUN apk add --no-cache postfix postfix-pgsql opendkim opendkim-utils bash perl ca-certificates
 
 # Ensure vmail user has UID/GID 5000
 RUN deluser vmail 2>/dev/null || true; \
@@ -13,6 +13,6 @@ RUN mkdir -p /var/vmail && chown -R vmail:vmail /var/vmail && chmod 0750 /var/vm
 COPY deploy/postfix/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 25
+EXPOSE 25 587
 
 ENTRYPOINT ["/entrypoint.sh"]

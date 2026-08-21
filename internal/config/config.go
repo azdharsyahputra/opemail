@@ -28,6 +28,9 @@ type Config struct {
 	DovecotDBPassword string
 	TLSBaseDir        string
 	TLSHostname       string
+	DKIMBaseDir       string
+	OpenDKIMConfigDir string
+	OpenDKIMSocket    string
 }
 
 func Load() (*Config, error) {
@@ -142,6 +145,21 @@ func Load() (*Config, error) {
 		tlsHostname = postfixHostname
 	}
 
+	dkimBaseDir := os.Getenv("DKIM_BASE_DIR")
+	if dkimBaseDir == "" {
+		dkimBaseDir = "./data/dkim"
+	}
+
+	openDKIMConfigDir := os.Getenv("OPENDKIM_CONFIG_DIR")
+	if openDKIMConfigDir == "" {
+		openDKIMConfigDir = "./data/opendkim"
+	}
+
+	openDKIMSocket := os.Getenv("OPENDKIM_SOCKET")
+	if openDKIMSocket == "" {
+		openDKIMSocket = "/var/spool/postfix/private/opendkim"
+	}
+
 	return &Config{
 		DatabaseURL:       dbURL,
 		StoragePath:       storagePath,
@@ -163,6 +181,10 @@ func Load() (*Config, error) {
 		DovecotDBPassword: dovecotDBPassword,
 		TLSBaseDir:        tlsBaseDir,
 		TLSHostname:       tlsHostname,
+		DKIMBaseDir:       dkimBaseDir,
+		OpenDKIMConfigDir: openDKIMConfigDir,
+		OpenDKIMSocket:    openDKIMSocket,
 	}, nil
 }
+
 

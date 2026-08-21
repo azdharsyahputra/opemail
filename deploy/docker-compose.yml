@@ -29,7 +29,10 @@ services:
       - ../data/vmail:/var/vmail
       - ../data/postfix:/config
       - ../data/tls:/etc/mailopen/tls:ro
+      - ../data/dkim:/etc/mailopen/dkim:ro
+      - ../data/opendkim:/etc/mailopen/opendkim:ro
       - postfix_private:/var/spool/postfix/private
+
     depends_on:
       postgres:
         condition: service_healthy
