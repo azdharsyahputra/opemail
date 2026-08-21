@@ -70,7 +70,7 @@ virtual_mailbox_base = %s
 smtpd_helo_required = yes
 smtpd_delay_reject = yes
 smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
-smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination
+
 `,
 		opts.Hostname,
 		domainsCFPath,
