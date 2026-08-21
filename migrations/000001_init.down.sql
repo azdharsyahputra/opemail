@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS aliases;
+DROP TABLE IF EXISTS mailboxes;
+DROP TABLE IF EXISTS domains;

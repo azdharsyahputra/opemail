@@ -1,0 +1,25 @@
+# Binaries for programs and plugins
+*.exe
+*.exe-
+*.dll
+*.so
+*.dylib
+
+# Test binary built for `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (vendor/ is not required if using Go modules)
+# vendor/
+
+# Executables
+bin/
+/openmail
+/mailopen
+
+# Environment files
+.env
+
+
