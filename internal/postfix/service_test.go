@@ -60,15 +60,16 @@ func TestPostfixConfigGeneration(t *testing.T) {
 		if strings.Contains(configs.MainCF, "home_mailbox") {
 			t.Error("main.cf should not contain home_mailbox")
 		}
-		if !strings.Contains(configs.MainCF, "virtual_mailbox_domains = pgsql:") {
+		if !strings.Contains(configs.MainCF, "virtual_mailbox_domains = proxy:pgsql:") && !strings.Contains(configs.MainCF, "virtual_mailbox_domains = pgsql:") {
 			t.Error("main.cf missing virtual_mailbox_domains")
 		}
-		if !strings.Contains(configs.MainCF, "virtual_mailbox_maps = pgsql:") {
+		if !strings.Contains(configs.MainCF, "virtual_mailbox_maps = proxy:pgsql:") && !strings.Contains(configs.MainCF, "virtual_mailbox_maps = pgsql:") {
 			t.Error("main.cf missing virtual_mailbox_maps")
 		}
-		if !strings.Contains(configs.MainCF, "virtual_alias_maps = pgsql:") {
+		if !strings.Contains(configs.MainCF, "virtual_alias_maps = proxy:pgsql:") && !strings.Contains(configs.MainCF, "virtual_alias_maps = pgsql:") {
 			t.Error("main.cf missing virtual_alias_maps")
 		}
+
 		if !strings.Contains(configs.MainCF, "virtual_mailbox_base = /var/vmail") {
 			t.Error("main.cf missing virtual_mailbox_base")
 		}
@@ -87,6 +88,9 @@ func TestPostfixConfigGeneration(t *testing.T) {
 		if !strings.Contains(configs.VirtualMailboxMapsCF, "provisioning_status = 'ready'") {
 			t.Error("mailbox CF missing provisioning_status = ready filter")
 		}
+		if !strings.Contains(configs.VirtualMailboxMapsCF, "Maildir/'") {
+			t.Error("mailbox CF query must return Maildir/ path ending with slash")
+		}
 		if !strings.Contains(configs.VirtualAliasMapsCF, "SELECT a.destination FROM aliases a") {
 			t.Error("alias CF missing query")
 		}
@@ -94,6 +98,7 @@ func TestPostfixConfigGeneration(t *testing.T) {
 			t.Error("mailbox CF missing db user")
 		}
 	})
+
 
 	t.Run("WriteConfigsAtomically writes 0640 permission files", func(t *testing.T) {
 		tempDir, err := os.MkdirTemp("", "openmail-postfix-test-*")

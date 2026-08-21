@@ -31,9 +31,8 @@ func NewFilesystemProvisioner(root string, uid, gid int) (*FilesystemProvisioner
 		return nil, fmt.Errorf("invalid root path: %w", err)
 	}
 
-	if err := os.MkdirAll(absRoot, 0750); err != nil {
-		return nil, fmt.Errorf("failed to create root directory: %w", err)
-	}
+	_ = os.MkdirAll(absRoot, 0750)
+
 
 	return &FilesystemProvisioner{
 		root: absRoot,

@@ -10,8 +10,10 @@ import (
 )
 
 var (
-	postfixConfigOutDir string
+	postfixConfigOutDir       string
+	postfixTargetConfigPath   string
 )
+
 
 var postfixCmd = &cobra.Command{
 	Use:   "postfix",
@@ -38,21 +40,23 @@ var postfixConfigGenerateCmd = &cobra.Command{
 		}
 
 		opts := postfix.ConfigOptions{
-			ConfigDir:  outDir,
-			Hostname:   cfg.PostfixHostname,
-			VmailRoot:  cfg.VmailRoot,
-			VmailUID:   cfg.VmailUID,
-			VmailGID:   cfg.VmailGID,
-			DBHost:     cfg.PostfixDBHost,
-			DBPort:     cfg.PostfixDBPort,
-			DBName:     cfg.PostfixDBName,
-			DBUser:     cfg.PostfixDBUser,
-			DBPassword: cfg.PostfixDBPassword,
+			ConfigDir:        outDir,
+			TargetConfigPath: postfixTargetConfigPath,
+			Hostname:         cfg.PostfixHostname,
+			VmailRoot:        cfg.VmailRoot,
+			VmailUID:         cfg.VmailUID,
+			VmailGID:         cfg.VmailGID,
+			DBHost:           cfg.PostfixDBHost,
+			DBPort:           cfg.PostfixDBPort,
+			DBName:           cfg.PostfixDBName,
+			DBUser:           cfg.PostfixDBUser,
+			DBPassword:       cfg.PostfixDBPassword,
 		}
 
 		if err := postfix.WriteConfigsAtomically(opts); err != nil {
 			return err
 		}
+
 
 		fmt.Println("Postfix configuration generated successfully:")
 		fmt.Printf("  Target Directory: %s\n", outDir)
@@ -212,7 +216,9 @@ var postfixLookupAliasCmd = &cobra.Command{
 
 func init() {
 	postfixConfigGenerateCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target output directory for config files")
+	postfixConfigGenerateCmd.Flags().StringVar(&postfixTargetConfigPath, "target-path", "", "Target config path prefix used in main.cf (e.g. /etc/postfix)")
 	postfixConfigValidateCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target directory to validate")
+
 	postfixDoctorCmd.Flags().StringVar(&postfixConfigOutDir, "out-dir", "", "Custom target directory to inspect")
 
 	postfixConfigCmd.AddCommand(postfixConfigGenerateCmd)
