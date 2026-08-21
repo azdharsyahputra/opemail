@@ -3,10 +3,12 @@ package local
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/identity"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 )
+
 
 
 type Provider struct {
@@ -51,13 +53,18 @@ func (p *Provider) Authenticate(ctx context.Context, username, password string) 
 		return nil, identity.ErrAuthenticationFailed
 	}
 
+	roles := []identity.Role{identity.RoleUser}
+	if strings.HasPrefix(strings.ToLower(mb.Email), "admin@") || strings.HasPrefix(strings.ToLower(mb.Email), "root@") {
+		roles = []identity.Role{identity.RoleAdmin}
+	}
+
 	id := &identity.Identity{
 		ID:        mb.ID.String(),
 		Username:  mb.Email,
 		Email:     mb.Email,
 		Status:    identity.StatusActive,
 		Provider:  "local",
-		Roles:     []identity.Role{identity.RoleUser},
+		Roles:     roles,
 		CreatedAt: mb.CreatedAt,
 		UpdatedAt: mb.UpdatedAt,
 	}
@@ -78,16 +85,22 @@ func (p *Provider) Lookup(ctx context.Context, username string) (*identity.Ident
 		status = identity.StatusDisabled
 	}
 
+	roles := []identity.Role{identity.RoleUser}
+	if strings.HasPrefix(strings.ToLower(mb.Email), "admin@") || strings.HasPrefix(strings.ToLower(mb.Email), "root@") {
+		roles = []identity.Role{identity.RoleAdmin}
+	}
+
 	return &identity.Identity{
 		ID:        mb.ID.String(),
 		Username:  mb.Email,
 		Email:     mb.Email,
 		Status:    status,
 		Provider:  "local",
-		Roles:     []identity.Role{identity.RoleUser},
+		Roles:     roles,
 		CreatedAt: mb.CreatedAt,
 		UpdatedAt: mb.UpdatedAt,
 	}, nil
+
 }
 
 func (p *Provider) Groups(ctx context.Context, username string) ([]identity.Group, error) {
