@@ -43,11 +43,13 @@ func NewRouter(deps RouterDependencies) http.Handler {
 	r := chi.NewRouter()
 
 	// Global Middlewares
+	r.Use(middleware.CORS)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logging(deps.Logger))
 	r.Use(middleware.Recovery(deps.Logger))
 	r.Use(middleware.BodyLimit(1 << 20)) // 1MB payload limit
 	r.Use(middleware.NewRateLimiter(200, time.Minute))
+
 
 
 	// Instantiate Handlers
