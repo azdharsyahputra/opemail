@@ -129,6 +129,7 @@ func NewRouter(deps RouterDependencies) http.Handler {
 
 			// Quota
 			mr.With(middleware.RequireRole("admin", "operator", "auditor", "user"), middleware.RequireMailboxOwnership()).Get("/{email}/quota", quotaH.Get)
+			mr.With(middleware.RequireRole("admin", "operator")).Put("/{email}/quota", quotaH.Update)
 			mr.With(middleware.RequireRole("admin", "operator")).Post("/{email}/quota/reconcile", quotaH.Reconcile)
 		})
 

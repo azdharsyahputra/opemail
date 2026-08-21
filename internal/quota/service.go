@@ -12,6 +12,7 @@ type Service interface {
 	GetQuota(ctx context.Context, email string) (*MailboxQuota, error)
 	CheckCanAccept(ctx context.Context, email string, incomingBytes int64) (bool, error)
 	Reconcile(ctx context.Context, email string) (*MailboxQuota, error)
+	UpdateQuota(ctx context.Context, email string, quotaBytes int64) (*MailboxQuota, error)
 }
 
 type service struct {
@@ -89,4 +90,22 @@ func (s *service) Reconcile(ctx context.Context, email string) (*MailboxQuota, e
 		IsExceeded:   isExceeded,
 		MessageCount: scan.MessageCount,
 	}, nil
+}
+
+func (s *service) UpdateQuota(ctx context.Context, email string, quotaBytes int64) (*MailboxQuota, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	mb, err := s.mailboxRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	if quotaBytes <= 0 {
+		quotaBytes = 1073741824 // 1GB default fallback
+	}
+
+	if err := s.mailboxRepo.UpdateQuotaBytes(ctx, mb.ID, quotaBytes); err != nil {
+		return nil, err
+	}
+
+	return s.GetQuota(ctx, email)
 }

@@ -21,6 +21,7 @@ type Repository interface {
 	UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error
 
 	UpdateUsedBytes(ctx context.Context, id uuid.UUID, usedBytes int64) error
+	UpdateQuotaBytes(ctx context.Context, id uuid.UUID, quotaBytes int64) error
 	Delete(ctx context.Context, email string) error
 }
 
@@ -110,7 +111,7 @@ func (r *postgresRepository) List(ctx context.Context) ([]*Mailbox, error) {
 		SELECT m.id, m.domain_id, m.email, m.password_hash, m.quota_bytes, COALESCE(m.used_bytes, 0), m.status, m.provisioning_status, COALESCE(m.identity_provider, 'local'), m.created_at, m.updated_at, d.name
 		FROM mailboxes m
 		JOIN domains d ON m.domain_id = d.id
-		ORDER BY m.created_at ASC
+		ORDER BY m.created_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -205,6 +206,22 @@ func (r *postgresRepository) UpdateUsedBytes(ctx context.Context, id uuid.UUID, 
 	res, err := r.db.ExecContext(ctx, query, usedBytes, time.Now().UTC(), id)
 	if err != nil {
 		return fmt.Errorf("repository update used bytes: %w", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return ErrMailboxNotFound
+	}
+	return nil
+}
+
+func (r *postgresRepository) UpdateQuotaBytes(ctx context.Context, id uuid.UUID, quotaBytes int64) error {
+	query := `UPDATE mailboxes SET quota_bytes = $1, updated_at = $2 WHERE id = $3`
+	res, err := r.db.ExecContext(ctx, query, quotaBytes, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("repository update quota bytes: %w", err)
 	}
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {

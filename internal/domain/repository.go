@@ -61,7 +61,7 @@ func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*Domain
 }
 
 func (r *postgresRepository) List(ctx context.Context) ([]*Domain, error) {
-	query := `SELECT id, name, status, created_at, updated_at FROM domains ORDER BY created_at ASC`
+	query := `SELECT id, name, status, created_at, updated_at FROM domains ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("repository list domains: %w", err)
