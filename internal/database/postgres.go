@@ -17,12 +17,16 @@ func NewPostgresDB(databaseURL string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to open database connection: %w", err)
 	}
 
+	db.SetMaxOpenConns(50)
+	db.SetMaxIdleConns(25)
+
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	return db, nil
 }
+
 
 func RunMigrationsUp(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})

@@ -33,9 +33,23 @@ func EscapeFilter(filter string) string {
 
 // EscapeDN escapes characters with special meaning in LDAP Distinguished Names (RFC 4514).
 func EscapeDN(dn string) string {
+	if dn == "" {
+		return ""
+	}
 	var buf bytes.Buffer
-	for i := 0; i < len(dn); i++ {
+	n := len(dn)
+	for i := 0; i < n; i++ {
 		c := dn[i]
+		if i == 0 && (c == ' ' || c == '#') {
+			buf.WriteByte('\\')
+			buf.WriteByte(c)
+			continue
+		}
+		if i == n-1 && c == ' ' {
+			buf.WriteByte('\\')
+			buf.WriteByte(c)
+			continue
+		}
 		switch c {
 		case '\\', ',', '+', '"', '<', '>', ';', '=':
 			buf.WriteByte('\\')
@@ -48,6 +62,7 @@ func EscapeDN(dn string) string {
 	}
 	return buf.String()
 }
+
 
 // BuildUserFilter builds a safe LDAP search filter replacing {username} with escaped input.
 func BuildUserFilter(template, username string) (string, error) {

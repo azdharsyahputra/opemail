@@ -6,17 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
-
 
 	"github.com/azdharsyahputra/openmail/internal/config"
 	"github.com/azdharsyahputra/openmail/internal/database"
 	"github.com/azdharsyahputra/openmail/internal/domain"
+	"github.com/azdharsyahputra/openmail/internal/identity/ldap"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/google/uuid"
 )
+
 
 func setupSecurityTestDB(t *testing.T) *sql.DB {
 
@@ -193,4 +195,41 @@ func TestSecurity_ComprehensiveHardening(t *testing.T) {
 			}
 		}
 	})
+
+	// SEC-016: LDAP Injection Attack Resistance (PayloadsAllTheThings Corpus)
+	t.Run("SEC-016: LDAP Injection Attack Resistance (PayloadsAllTheThings Corpus)", func(t *testing.T) {
+		payloads := []string{
+			"*", "*)(&", "*))%00", "admin)(&)", "admin)(|(password=*))",
+			"admin)(!(&(1=0)))", "*)(uid=*))(|(uid=*", "user)(|(mail=*))",
+			"*()|&'", "admin*", "*/*", "*)(objectClass=*", "admin)(objectClass=user",
+			"1' or '1' = '1", "x' or name()='username' or 'x'='y", "admin)(|(userPassword=*))",
+			`\\`, "user\x00admin", "*)(&(1=1", "admin*)(|(objectclass=*))",
+			")(|(cn=*))", ")(|(uid=*))", ")(|(mail=*))", "admin)(|(description=*))",
+		}
+
+		template := "(&(objectClass=inetOrgPerson)(|(mail={username})(uid={username})))"
+
+		for _, p := range payloads {
+			filter, err := ldap.BuildUserFilter(template, p)
+			if err != nil {
+				continue
+			}
+
+			// In all cases, raw unescaped injection tokens must never alter filter AST
+			if strings.Contains(p, "*") && strings.Contains(filter, p) {
+				t.Errorf("raw wildcard found in filter for payload %q: %s", p, filter)
+			}
+			if strings.Contains(p, ")(") && strings.Contains(filter, p) {
+				t.Errorf("raw AST delimiter ')(' found unescaped for payload %q: %s", p, filter)
+			}
+
+			// Assert parenthesis integrity
+			openCount := strings.Count(filter, "(")
+			closeCount := strings.Count(filter, ")")
+			if openCount != 5 || closeCount != 5 {
+				t.Errorf("filter parenthesis structure compromised by payload %q: %s", p, filter)
+			}
+		}
+	})
 }
+
