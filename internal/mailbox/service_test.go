@@ -133,6 +133,19 @@ func (m *mockMailboxRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status
 	return mailbox.ErrMailboxNotFound
 }
 
+func (m *mockMailboxRepo) UpdateIdentityProvider(ctx context.Context, id uuid.UUID, provider string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mb := range m.mailboxes {
+		if mb.ID == id {
+			mb.IdentityProvider = provider
+			return nil
+		}
+	}
+	return mailbox.ErrMailboxNotFound
+}
+
+
 func (m *mockMailboxRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, hash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

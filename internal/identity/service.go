@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/google/uuid"
 )
+
+var asciiEmailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 
 type Service interface {
 	Authenticate(ctx context.Context, username, password string) (*Identity, error)
@@ -38,7 +41,6 @@ type SyncReport struct {
 	Errors          []string      `json:"errors,omitempty"`
 	Duration        time.Duration `json:"duration"`
 }
-
 
 type DoctorReport struct {
 	ProviderName string            `json:"provider_name"`
@@ -94,8 +96,10 @@ func (s *service) Authenticate(ctx context.Context, username, password string) (
 	if s.mailboxRepo != nil {
 		mb, err := s.mailboxRepo.GetByEmail(ctx, username)
 		if err == nil && mb != nil {
-			// If mailbox has custom identity_provider, use it
-			// For gatekeeper check:
+			if mb.IdentityProvider != "" {
+				providerName = mb.IdentityProvider
+			}
+			// Gatekeeper check:
 			if mb.Status == "suspended" {
 				return nil, ErrAccountSuspended
 			}
@@ -113,6 +117,8 @@ func (s *service) Authenticate(ctx context.Context, username, password string) (
 		return nil, err
 	}
 
+	// Strict Fail-Closed (LDAP-SEC-024):
+	// Authenticate against the explicitly assigned provider. Never fall back to another provider!
 	ident, err := provider.Authenticate(ctx, username, password)
 	if err != nil {
 		return nil, err
@@ -183,6 +189,15 @@ func (s *service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 		opts.DefaultQuotaBytes = 1073741824 // 1GB default
 	}
 
+	// Pre-scan Pass: count occurrences of each email to detect duplicate collision attempts
+	emailCounts := make(map[string]int)
+	for _, ident := range identities {
+		em := CanonicalizeUsername(ident.Email)
+		if em != "" && asciiEmailRegex.MatchString(em) {
+			emailCounts[em]++
+		}
+	}
+
 	for _, ident := range identities {
 		email := CanonicalizeUsername(ident.Email)
 		if email == "" {
@@ -190,11 +205,22 @@ func (s *service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 			continue
 		}
 
-		parts := strings.Split(email, "@")
-		if len(parts) != 2 {
+		// 1. Strict RFC ASCII Email Format Validation (reject unicode/homograph/control chars)
+		if !asciiEmailRegex.MatchString(email) {
+			report.Errors = append(report.Errors, fmt.Sprintf("invalid email format or unsupported unicode characters: %s", email))
 			report.Skipped++
 			continue
 		}
+
+		// 2. Duplicate email collision detection in directory stream
+		if emailCounts[email] > 1 {
+			report.Errors = append(report.Errors, fmt.Sprintf("collision: multiple LDAP entries claim same email %s (entry: %s)", email, ident.ID))
+			report.Skipped++
+			continue
+		}
+
+
+		parts := strings.Split(email, "@")
 		domainPart := parts[1]
 
 		if opts.DomainName != "" && !strings.EqualFold(domainPart, opts.DomainName) {
@@ -202,34 +228,50 @@ func (s *service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 			continue
 		}
 
-		// Ensure domain exists in DB
+		// 3. Ensure domain exists in DB and is active
 		if s.domainRepo != nil {
-			_, err := s.domainRepo.GetByName(ctx, domainPart)
-			if err != nil {
+			dom, err := s.domainRepo.GetByName(ctx, domainPart)
+			if err != nil || dom == nil {
 				report.Errors = append(report.Errors, fmt.Sprintf("domain %s not registered in MailOpen for user %s", domainPart, email))
+				report.Skipped++
+				continue
+			}
+			if dom.Status != "active" {
+				report.Errors = append(report.Errors, fmt.Sprintf("domain %s is not active (status: %s) for user %s", domainPart, dom.Status, email))
 				report.Skipped++
 				continue
 			}
 		}
 
-		// Check if mailbox exists
+		// 4. Mailbox existence & Hijacking / Takeover Protection
 		existing, err := s.mailboxRepo.GetByEmail(ctx, email)
 		if err != nil {
-			// Mailbox does not exist
+			// Mailbox does not exist -> Safe to auto-create if enabled
 			if opts.AutoCreateMailbox && !opts.DryRun && s.mbService != nil {
 				// Provision new mailbox for LDAP identity
-				_, createErr := s.mbService.Create(ctx, email, "LDAP_MANAGED_"+uuid.New().String(), opts.DefaultQuotaBytes)
+				mb, createErr := s.mbService.Create(ctx, email, "LDAP_MANAGED_"+uuid.New().String(), opts.DefaultQuotaBytes)
 				if createErr != nil {
 					report.Errors = append(report.Errors, fmt.Sprintf("create mailbox %s: %v", email, createErr))
 				} else {
+					// Mark mailbox as LDAP-managed
+					_ = s.mailboxRepo.UpdateIdentityProvider(ctx, mb.ID, "ldap")
 					_, _, _ = s.mbService.Provision(ctx, email)
 					report.Created++
 				}
+
 			} else {
 				report.Skipped++
 			}
 		} else {
-			// Mailbox exists, update status if needed
+			// Mailbox ALREADY exists: Hijacking Protection Rule
+			// If existing mailbox is a local account, reject LDAP takeover!
+			if existing.IdentityProvider == "local" {
+				report.Errors = append(report.Errors, fmt.Sprintf("security violation: LDAP user %s attempted takeover of existing local mailbox %s", ident.ID, email))
+				report.Skipped++
+				continue
+			}
+
+			// Mailbox exists and is LDAP managed, update status if needed
 			if ident.Status == StatusDisabled && existing.Status == "active" {
 				if !opts.DryRun {
 					_ = s.mailboxRepo.UpdateStatus(ctx, existing.ID, "suspended")

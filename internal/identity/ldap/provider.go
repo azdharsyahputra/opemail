@@ -3,10 +3,12 @@ package ldap
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/identity"
 	goldap "github.com/go-ldap/ldap/v3"
 )
+
 
 
 type Provider struct {
@@ -59,6 +61,12 @@ func (p *Provider) Authenticate(ctx context.Context, username, password string) 
 	userEntry := entries[0]
 	userDN := userEntry.DN
 
+	// Subtree Containment Check (LDAP-SEC-017 & LDAP-SEC-018):
+	// Prevent base DN escape by verifying user DN is strictly subordinate to UserBaseDN
+	if !isSubordinateDN(userDN, p.cfg.UserBaseDN) {
+		return nil, fmt.Errorf("security violation: LDAP entry DN %q is outside configured UserBaseDN %q", userDN, p.cfg.UserBaseDN)
+	}
+
 	// 2. Perform direct user bind with user's password
 	if err := p.client.AuthenticateUser(ctx, userDN, password); err != nil {
 		return nil, identity.ErrAuthenticationFailed
@@ -66,6 +74,9 @@ func (p *Provider) Authenticate(ctx context.Context, username, password string) 
 
 	// 3. Map identity & enforce active status
 	ident := p.mapper.EntryToIdentity(userEntry)
+	if ident == nil || ident.Username == "" || ident.Email == "" {
+		return nil, identity.ErrAuthenticationFailed
+	}
 	if ident.Status == identity.StatusDisabled {
 		return nil, identity.ErrAccountDisabled
 	}
@@ -82,7 +93,6 @@ func (p *Provider) Lookup(ctx context.Context, username string) (*identity.Ident
 		return nil, identity.ErrInvalidCredentials
 	}
 
-
 	filter, err := BuildUserFilter(p.cfg.UserFilter, username)
 	if err != nil {
 		return nil, err
@@ -97,10 +107,29 @@ func (p *Provider) Lookup(ctx context.Context, username string) (*identity.Ident
 		return nil, identity.ErrIdentityNotFound
 	}
 
-	return p.mapper.EntryToIdentity(entries[0]), nil
+	userEntry := entries[0]
+	if !isSubordinateDN(userEntry.DN, p.cfg.UserBaseDN) {
+		return nil, fmt.Errorf("security violation: LDAP entry DN %q is outside configured UserBaseDN %q", userEntry.DN, p.cfg.UserBaseDN)
+	}
+
+	ident := p.mapper.EntryToIdentity(userEntry)
+	if ident == nil {
+		return nil, identity.ErrIdentityNotFound
+	}
+	return ident, nil
+}
+
+func isSubordinateDN(dn, baseDN string) bool {
+	if baseDN == "" {
+		return true
+	}
+	normDN := strings.ToLower(strings.ReplaceAll(dn, " ", ""))
+	normBase := strings.ToLower(strings.ReplaceAll(baseDN, " ", ""))
+	return strings.HasSuffix(normDN, normBase)
 }
 
 func (p *Provider) SetPassword(ctx context.Context, username, newPassword string) error {
+
 	user, err := p.Lookup(ctx, username)
 	if err != nil {
 		return err

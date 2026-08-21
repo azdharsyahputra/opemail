@@ -2,10 +2,13 @@ package ldap
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/azdharsyahputra/openmail/internal/identity"
 	goldap "github.com/go-ldap/ldap/v3"
 )
+
+const maxAttrBytes = 4096
 
 type Mapper struct {
 	groupRoleMapping map[string]string
@@ -27,26 +30,35 @@ func (m *Mapper) EntryToIdentity(entry *goldap.Entry) *identity.Identity {
 		return nil
 	}
 
-	uid := entry.GetAttributeValue("uid")
+	uid := sanitizeString(entry.GetAttributeValue("uid"))
 	if uid == "" {
-		uid = entry.GetAttributeValue("sAMAccountName")
+		uid = sanitizeString(entry.GetAttributeValue("sAMAccountName"))
 	}
 
-	mail := entry.GetAttributeValue("mail")
+	// Pick first valid canonical email
+	mailValues := entry.GetAttributeValues("mail")
+	var mail string
+	for _, mv := range mailValues {
+		san := sanitizeString(mv)
+		if san != "" && strings.Contains(san, "@") {
+			mail = san
+			break
+		}
+	}
 	if mail == "" {
-		mail = entry.GetAttributeValue("userPrincipalName")
+		mail = sanitizeString(entry.GetAttributeValue("userPrincipalName"))
 	}
 	if mail == "" && strings.Contains(uid, "@") {
 		mail = uid
 	}
 
-	displayName := entry.GetAttributeValue("displayName")
+	displayName := sanitizeString(entry.GetAttributeValue("displayName"))
 	if displayName == "" {
-		displayName = entry.GetAttributeValue("cn")
+		displayName = sanitizeString(entry.GetAttributeValue("cn"))
 	}
 
-	firstName := entry.GetAttributeValue("givenName")
-	lastName := entry.GetAttributeValue("sn")
+	firstName := sanitizeString(entry.GetAttributeValue("givenName"))
+	lastName := sanitizeString(entry.GetAttributeValue("sn"))
 
 	// Determine status from LDAP account controls / lock attributes
 	status := identity.StatusActive
@@ -59,21 +71,29 @@ func (m *Mapper) EntryToIdentity(entry *goldap.Entry) *identity.Identity {
 	attributes := make(map[string]string)
 	for _, attr := range entry.Attributes {
 		if len(attr.Values) > 0 {
-			attributes[attr.Name] = attr.Values[0]
+			attributes[attr.Name] = sanitizeString(attr.Values[0])
 		}
 	}
-	attributes["dn"] = entry.DN
+	attributes["dn"] = sanitizeString(entry.DN)
 
-	// Parse groups if memberOf is populated
+	// Parse groups if memberOf is populated (deduplicated)
+	groupMap := make(map[string]bool)
+	roleMap := make(map[identity.Role]bool)
 	var groups []string
 	var roles []identity.Role
+
 	memberOf := entry.GetAttributeValues("memberOf")
 	for _, groupDN := range memberOf {
-		cn := extractCNFromDN(groupDN)
-		if cn != "" {
+		cn := extractCNFromDN(sanitizeString(groupDN))
+		if cn != "" && !groupMap[cn] {
+			groupMap[cn] = true
 			groups = append(groups, cn)
 			if roleStr, exists := m.groupRoleMapping[cn]; exists {
-				roles = append(roles, identity.Role(roleStr))
+				r := identity.Role(roleStr)
+				if !roleMap[r] {
+					roleMap[r] = true
+					roles = append(roles, r)
+				}
 			}
 		}
 	}
@@ -83,7 +103,7 @@ func (m *Mapper) EntryToIdentity(entry *goldap.Entry) *identity.Identity {
 	}
 
 	return &identity.Identity{
-		ID:          entry.DN,
+		ID:          sanitizeString(entry.DN),
 		Username:    uid,
 		Email:       strings.ToLower(mail),
 		DisplayName: displayName,
@@ -95,6 +115,17 @@ func (m *Mapper) EntryToIdentity(entry *goldap.Entry) *identity.Identity {
 		Groups:      groups,
 		Roles:       roles,
 	}
+}
+
+func sanitizeString(s string) string {
+	if !utf8.ValidString(s) {
+		// Replace invalid UTF-8 sequences
+		s = strings.ToValidUTF8(s, "")
+	}
+	if len(s) > maxAttrBytes {
+		s = s[:maxAttrBytes]
+	}
+	return strings.TrimSpace(s)
 }
 
 func extractCNFromDN(dn string) string {
