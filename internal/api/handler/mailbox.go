@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/azdharsyahputra/openmail/internal/api/response"
@@ -10,6 +11,14 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/go-chi/chi/v5"
 )
+
+func parseEmailParam(r *http.Request, paramName string) string {
+	val := chi.URLParam(r, paramName)
+	if unescaped, err := url.PathUnescape(val); err == nil {
+		val = unescaped
+	}
+	return strings.TrimSpace(strings.ToLower(val))
+}
 
 type MailboxHandler struct {
 	mailboxService mailbox.Service
@@ -91,7 +100,7 @@ func (h *MailboxHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	mb, err := h.mailboxService.GetByEmail(r.Context(), email)
 	if err != nil {
 		response.Error(w, r, http.StatusNotFound, response.ErrCodeMailboxNotFound, "mailbox not found", nil)
@@ -102,7 +111,7 @@ func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	mb, _ := h.mailboxService.GetByEmail(r.Context(), email)
 
 	err := h.mailboxService.Delete(r.Context(), email)
@@ -128,7 +137,7 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Suspend(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	mb, err := h.mailboxService.GetByEmail(r.Context(), email)
 	if err != nil {
 		response.Error(w, r, http.StatusNotFound, response.ErrCodeMailboxNotFound, "mailbox not found", nil)
@@ -148,7 +157,7 @@ func (h *MailboxHandler) Suspend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Resume(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	mb, err := h.mailboxService.GetByEmail(r.Context(), email)
 	if err != nil {
 		response.Error(w, r, http.StatusNotFound, response.ErrCodeMailboxNotFound, "mailbox not found", nil)
@@ -168,7 +177,7 @@ func (h *MailboxHandler) Resume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Provision(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	mb, _, err := h.mailboxService.Provision(r.Context(), email)
 	if err != nil {
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "provisioning failed", err.Error())
@@ -183,7 +192,7 @@ func (h *MailboxHandler) Provision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	var req SetPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, "malformed request payload", err.Error())

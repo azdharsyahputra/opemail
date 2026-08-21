@@ -8,7 +8,6 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/api/response"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
-	"github.com/go-chi/chi/v5"
 )
 
 type AliasHandler struct {
@@ -30,7 +29,7 @@ type CreateAliasRequest struct {
 }
 
 func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
-	email := chi.URLParam(r, "email")
+	email := parseEmailParam(r, "email")
 	aliases, err := h.aliasRepo.ListAliasesByDestination(r.Context(), email)
 	if err != nil {
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to list aliases", err.Error())
@@ -47,7 +46,7 @@ func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
-	destEmail := chi.URLParam(r, "email")
+	destEmail := parseEmailParam(r, "email")
 	var req CreateAliasRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, "malformed request payload", err.Error())
@@ -102,8 +101,8 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AliasHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	destEmail := chi.URLParam(r, "email")
-	sourceAlias := chi.URLParam(r, "alias")
+	destEmail := parseEmailParam(r, "email")
+	sourceAlias := parseEmailParam(r, "alias")
 
 	err := h.aliasRepo.DeleteAlias(r.Context(), sourceAlias, destEmail)
 	if err != nil {
