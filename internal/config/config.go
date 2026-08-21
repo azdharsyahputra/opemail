@@ -27,11 +27,20 @@ type Config struct {
 	DovecotDBUser     string
 	DovecotDBPassword string
 	TLSBaseDir        string
+
 	TLSHostname       string
 	DKIMBaseDir       string
 	OpenDKIMConfigDir string
 	OpenDKIMSocket    string
+	IdentityProvider  string
+	LDAPURL           string
+	LDAPBaseDN       string
+	LDAPBindDN        string
+	LDAPBindPassword  string
+	VmailDir          string
 }
+
+
 
 func Load() (*Config, error) {
 	// Silently attempt to load .env if present
@@ -160,10 +169,21 @@ func Load() (*Config, error) {
 		openDKIMSocket = "/var/spool/postfix/private/opendkim"
 	}
 
+	identityProvider := os.Getenv("IDENTITY_PROVIDER")
+	if identityProvider == "" {
+		identityProvider = "local"
+	}
+
+	ldapURL := os.Getenv("LDAP_URL")
+	ldapBaseDN := os.Getenv("LDAP_BASE_DN")
+	ldapBindDN := os.Getenv("LDAP_BIND_DN")
+	ldapBindPassword := os.Getenv("LDAP_BIND_PASSWORD")
+
 	return &Config{
 		DatabaseURL:       dbURL,
 		StoragePath:       storagePath,
 		VmailRoot:         vmailRoot,
+		VmailDir:          vmailRoot,
 		VmailUID:          vmailUID,
 		VmailGID:          vmailGID,
 		PostfixConfigDir:  postfixConfigDir,
@@ -184,7 +204,13 @@ func Load() (*Config, error) {
 		DKIMBaseDir:       dkimBaseDir,
 		OpenDKIMConfigDir: openDKIMConfigDir,
 		OpenDKIMSocket:    openDKIMSocket,
+		IdentityProvider:  identityProvider,
+		LDAPURL:           ldapURL,
+		LDAPBaseDN:        ldapBaseDN,
+		LDAPBindDN:        ldapBindDN,
+		LDAPBindPassword:  ldapBindPassword,
 	}, nil
 }
+
 
 

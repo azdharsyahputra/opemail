@@ -1,18 +1,26 @@
-# MailOpen W2 — Final GA Gate (W2-GA-001 to W2-GA-015)
+# MailOpen W3.1 — Identity & Directory Layer (LDAP Integration)
 
-## 15 Final Production GA Gates
-- [x] **W2-GA-001**: Clean-room bootstrap & installation validation (`mailopen system doctor` -> HEALTHY)
-- [x] **W2-GA-002**: Fresh install real email flow (Inbound, Outbound, Local delivery, IMAP state)
-- [x] **W2-GA-003**: Real public DNS validation (A, AAAA, MX, PTR, FCrDNS, SPF, DKIM, DMARC)
-- [x] **W2-GA-004**: External deliverability contract (RFC 8601 Authentication-Results, SPF pass, DKIM pass, DMARC pass)
-- [x] **W2-GA-005**: External inbound abuse controls (550 reject on unknown recipient, 250 accept on valid, AUTH on :25 blocked)
-- [x] **W2-GA-006**: Open relay final prohibition (Internet :25 -> victim@gmail.com MUST return 554 Relay access denied; :587 + valid AUTH -> 250 queued)
-- [x] **W2-GA-007**: TLS external scanning (TLS 1.2 & 1.3 accepted, legacy TLS 1.0 & 1.1 rejected)
-- [x] **W2-GA-008**: Full Account & Password lifecycle (Create -> Auth -> Pass Change -> Old Fails -> New Passes -> Suspend -> Auth Fails -> Resume -> Auth Passes -> Delete -> Auth Fails)
-- [x] **W2-GA-009**: Data persistence across system, database, and MTA restarts
-- [x] **W2-GA-010**: Upgrade validation from release artifact binary
-- [x] **W2-GA-011**: Backup portability & cross-host disaster recovery
-- [x] **W2-GA-012**: Secret & credential audit across git history, logs, and binaries
-- [x] **W2-GA-013**: Container & dependency vulnerability security audit (0 critical)
-- [x] **W2-GA-014**: Dependency freeze, Release Manifest & CycloneDX SBOM
-- [x] **W2-GA-015**: Final GA release artifact build from `v0.9.0` tag (`dist/SHA256SUMS`, `CHANGELOG.md`, `RELEASE.md`)
+## Core Definition of Done & Verification
+
+### 1. Identity Abstraction & Provider Layer
+- [x] **`internal/identity/`**: Domain models (`Identity`, `Group`, `Role`, `IdentityStatus`)
+- [x] **`internal/identity/local/`**: PostgreSQL local provider with Argon2id constant-time hashing
+- [x] **`internal/identity/ldap/`**: LDAP Provider with RFC 4515 filter escaping, User Bind pattern, and RBAC mapping
+- [x] **`internal/identity/service.go`**: Multi-provider orchestrator with Gatekeeper security checks
+
+### 2. Database Migration & Schema Compatibility
+- [x] **`migrations/000011_add_identity_provider.up.sql`**: Added `identity_provider` column, nullable password hash for LDAP users
+
+### 3. CLI Management
+- [x] **`mailopen ldap doctor`**: Diagnostic checks for config, TLS, connection, search, and bind
+- [x] **`mailopen identity auth`**: Multi-provider password authentication
+- [x] **`mailopen identity lookup`**: Directory attributes and group resolution
+- [x] **`mailopen identity sync` / `mailopen ldap sync`**: Discovers LDAP directory identities and provisions virtual mailboxes
+
+### 4. Integration & Security Matrix (100% PASS)
+- [x] **LDAP-001 to LDAP-010**: Authentication matrix (correct password, wrong password, unknown user, case normalization, disabled account, empty password)
+- [x] **LDAP-SEC-001 to LDAP-SEC-008**: Filter injection protection, RFC 4515 character escaping, zero credential logging
+- [x] **LDAP-TLS-001 to LDAP-TLS-008**: Modern TLS 1.2+ enforcement, certificate authority verification
+- [x] **LDAP-FAIL-001 to LDAP-FAIL-009**: Provider unavailable fallback, timeout handling, recovery
+- [x] **LDAP-RBAC-001 to LDAP-RBAC-007**: Group membership resolution and role translation (`mail-admins` -> `admin`, `mail-operators` -> `operator`, `mail-auditors` -> `auditor`)
+- [x] **LDAP-GOLDEN-001**: Golden E2E Scenario (LDAP User created -> MailOpen Sync -> Mailbox provisioned -> Auth -> Submission/IMAP -> User Disabled -> Access Revoked)

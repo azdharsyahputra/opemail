@@ -1,0 +1,11 @@
+dn: cn=mail-admins,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: mail-admins
+description: MailOpen Administrative Operators
+member: uid=ajar,ou=people,dc=example,dc=com
+
+dn: cn=mail-operators,ou=groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: mail-operators
+description: MailOpen Routine Operators
+member: uid=bob,ou=people,dc=example,dc=com

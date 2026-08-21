@@ -1,0 +1,23 @@
+dn: uid=ajar,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+uid: ajar
+mail: ajar@example.com
+cn: Ajar Developer
+givenName: Ajar
+sn: Developer
+displayName: Ajar Developer
+userPassword: {SSHA}SecretPass123!
+
+dn: uid=bob,ou=people,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: organizationalPerson
+objectClass: person
+uid: bob
+mail: bob@example.com
+cn: Bob User
+givenName: Bob
+sn: User
+displayName: Bob User
+userPassword: {SSHA}BobSecretPass123!

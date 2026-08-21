@@ -1,0 +1,15 @@
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: mailopen_ldap
+    environment:
+      LDAP_ORGANISATION: "MailOpen Org"
+      LDAP_DOMAIN: "example.com"
+      LDAP_ADMIN_PASSWORD: "admin_secret_pass"
+      LDAP_BASE_DN: "dc=example,dc=com"
+      LDAP_TLS: "false"
+    ports:
+      - "389:389"
+      - "636:636"
+    volumes:
+      - ./docker/ldap/bootstrap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
