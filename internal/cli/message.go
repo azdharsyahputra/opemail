@@ -6,9 +6,11 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/azdharsyahputra/openmail/internal/audit"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
+
 
 var messageCmd = &cobra.Command{
 	Use:   "message",
@@ -122,9 +124,103 @@ var messageDeleteCmd = &cobra.Command{
 	},
 }
 
+var messageEventsCmd = &cobra.Command{
+	Use:   "events <message-id>",
+	Short: "Show lifecycle audit trail events for a message",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := uuid.Parse(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid message UUID: %w", err)
+		}
+
+		db, err := getDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		auditRepo := audit.NewPostgresRepository(db)
+		auditSvc := audit.NewService(auditRepo)
+
+		events, err := auditSvc.ListMessageEvents(cmd.Context(), id)
+		if err != nil {
+			return fmt.Errorf("failed to get message events: %w", err)
+		}
+
+		fmt.Println("\nMessage Events")
+		fmt.Println("──────────────────────────────")
+		if len(events) == 0 {
+			fmt.Println("No recorded events for this message ID.")
+			return nil
+		}
+
+		for _, e := range events {
+			detailStr := ""
+			if e.Detail != "" {
+				detailStr = fmt.Sprintf(" (%s)", e.Detail)
+			}
+			fmt.Printf("%s  %-16s  [%s]%s\n", e.CreatedAt.Format("15:04:05"), e.EventType, e.Status, detailStr)
+		}
+		return nil
+	},
+}
+
+var messageTraceCmd = &cobra.Command{
+	Use:   "trace <message-id>",
+	Short: "Trace the end-to-end delivery path and security evaluations for a message",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, err := uuid.Parse(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid message UUID: %w", err)
+		}
+
+		db, err := getDB()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		auditRepo := audit.NewPostgresRepository(db)
+		auditSvc := audit.NewService(auditRepo)
+
+		trace, err := auditSvc.TraceMessage(cmd.Context(), id)
+		if err != nil {
+			return fmt.Errorf("failed to trace message: %w", err)
+		}
+
+		fmt.Println("\nMessage Trace")
+		fmt.Println("──────────────────────────────")
+		fmt.Println("\nMessage ID")
+		fmt.Printf("  %s\n", trace.MessageID)
+		if trace.QueueID != "" {
+			fmt.Println("\nQueue ID")
+			fmt.Printf("  %s\n", trace.QueueID)
+		}
+
+		fmt.Println("\nTimeline")
+		if len(trace.Events) == 0 {
+			fmt.Println("  (No events recorded)")
+		} else {
+			for _, e := range trace.Events {
+				detailStr := ""
+				if e.Detail != "" {
+					detailStr = " - " + e.Detail
+				}
+				fmt.Printf("  %s %s%s\n", e.CreatedAt.Format("15:04:05"), e.EventType, detailStr)
+			}
+		}
+		return nil
+	},
+}
+
 func init() {
 	messageCmd.AddCommand(messageListCmd)
 	messageCmd.AddCommand(messageStoreCmd)
 	messageCmd.AddCommand(messageGetCmd)
 	messageCmd.AddCommand(messageDeleteCmd)
+	messageCmd.AddCommand(messageEventsCmd)
+	messageCmd.AddCommand(messageTraceCmd)
 }
+

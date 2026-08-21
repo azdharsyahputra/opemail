@@ -1,90 +1,64 @@
-# W2.9 — Inbound Mail Security & Anti-Abuse
+# W2.10 — Production Hardening, Observability & Mail Queue
 
-## 0. Target Architecture
+## 0. Target Architecture & Scope
 
 ```text
-                         INTERNET
-                            │
-                            │ TCP :25
-                            ▼
-                  ┌──────────────────┐
-                  │     Postfix      │
-                  │   SMTP Receive   │
-                  └─────────┬────────┘
-                            │
-                            ├── Connection controls (:25 limits)
-                            ├── HELO/EHLO validation
-                            ├── Client & Recipient validation (PostgreSQL)
-                            ├── Rate limiting & Anti-abuse controls
-                            ├── RBL / DNSBL & Reverse DNS (PTR/FCrDNS)
-                            ├── SPF evaluation (RFC 7208)
-                            ├── DKIM verification (RFC 6376)
-                            └── DMARC evaluation & alignment (RFC 7489)
-                            │
-                            ▼
-                  ┌──────────────────┐
-                  │ Content Pipeline │
-                  └─────────┬────────┘
-                            │
-                            ├── Spam evaluation (Rspamd / scoring)
-                            ├── Antivirus scanning (ClamAV / malware)
-                            ├── Header injection (Authentication-Results, Received-SPF)
-                            ├── Oversized message rejection (message_size_limit)
-                            ├── Quarantine / Junk routing
-                            │
-                            ▼
-                       Maildir/new/
-                            │
-                            ▼
-                         Dovecot
+                                MailOpen Control Plane
+                                          │
+        ┌───────────────────┬─────────────┴─────────────┬───────────────────┐
+        │                   │                           │                   │
+  CONTROL PLANE        MAIL ENGINES                 SECURITY          OBSERVABILITY & QUEUE
+        │                   │                           │                   │
+   PostgreSQL            Postfix                     TLS Certs          Structured slog
+   Domains & Mailboxes   Dovecot IMAP/IMAPS          DKIM Keystore      Prometheus /metrics
+   Aliases               Maildir++ Storage           SPF & DMARC        Health Live/Ready/Deep
+   Mailbox Quotas        Postfix Queue Controller    Rspamd & ClamAV    Message Events & Trace
+   Audit Trail Log       (postqueue/postcat/super)   Anti-Abuse Limits  Audit Trail Logs
+                                                                        Backup & Disaster Recovery
 ```
-
-Control Plane vs Data Plane:
-- **Control Plane (MailOpen)**: Policy configurations, thresholds, mailbox limits, diagnostic doctors.
-- **Data Plane (Postfix, Dovecot, OpenDKIM, Rspamd, ClamAV)**: Real-time network and mail processing.
-- **Runtime State**: Dynamic lookups and memory counters (Redis / in-memory rate limiters).
-- **Secrets & Storage**: Filesystem Maildir, TLS certs, DKIM private keys.
 
 ---
 
 ## 1. Definition of Done Checklist
 
-- [ ] **W2.9.1 Database Migrations for Mail Policy & Mailbox Limits**
-  - [ ] Migration `000007_mail_policy.up.sql` (spam_threshold, reject_threshold, quarantine, size_limit, rbl_policy)
-  - [ ] Migration `000008_mailbox_limits.up.sql` (outbound rate limits per mailbox)
-  - [ ] Models & PostgreSQL repositories
-- [ ] **W2.9.2 Inbound Security & Policy Engine (`internal/inbound/`)**
-  - [ ] Recipient validation without enumeration leakage (unknown & suspended both return consistent 550)
-  - [ ] HELO/EHLO validation & Postfix connection controls
-  - [ ] SPF inbound evaluation (pass, fail, softfail, neutral, none, temperror, permerror)
-  - [ ] DKIM inbound verification (pass, fail, none, neutral)
-  - [ ] DMARC alignment evaluation (SPF aligned OR DKIM aligned)
-  - [ ] DMARC policy enforcement (none, quarantine, reject)
-  - [ ] Header generation & injection (`Authentication-Results:`, `Received-SPF:`)
-  - [ ] Reverse DNS & RBL reputation policies
-- [ ] **W2.9.3 Spam & Antivirus Pipelines (`internal/spam/`, `internal/antivirus/`)**
-  - [ ] Spam scoring thresholds & quarantine policy
-  - [ ] Antivirus scanner integration & malware detection
-  - [ ] Message size limit enforcement
-- [ ] **W2.9.4 Abuse & Rate Limiting Engine (`internal/abuse/`)**
-  - [ ] Outbound authenticated user limits (messages/min, messages/hr, recipients/day)
-  - [ ] IP connection burst & rate limit tracking
-- [ ] **W2.9.5 Postfix & Milter Inbound Hardening**
-  - [ ] Postfix `main.cf`: connection, message, recipient rate limits, `message_size_limit`, HELO restrictions
-- [ ] **W2.9.6 CLI Subcommands**
-  - [ ] `mailopen inbound doctor`
-  - [ ] `mailopen inbound policy show / set <domain>`
-  - [ ] `mailopen inbound test smtp / spf / dkim / dmarc`
-  - [ ] `mailopen spam status / doctor`
-  - [ ] `mailopen antivirus status / doctor`
-  - [ ] `mailopen abuse status / limits show / limits set`
-  - [ ] `mailopen domain doctor <domain>` (full comprehensive 24-point check)
-- [ ] **W2.9.7 Test Matrices & Full Integration**
-  - [ ] Inbound recipient validation test
-  - [ ] SMTP connection limit test
-  - [ ] SPF inbound evaluation test matrix
-  - [ ] DKIM inbound verification test matrix
-  - [ ] DMARC alignment & policy test matrix
-  - [ ] Spam & antivirus detection test matrix
-  - [ ] Outbound abuse rate limit test
-  - [ ] Regression test across W2.1 - W2.9 (`go test -count=1 -v ./...`)
+- [ ] **W2.10.1 Database Migrations for Message Events & Audit Trail**
+  - [ ] Migration `000009_message_events_and_audit.up.sql` (`message_events`, `audit_logs`)
+  - [ ] Migration `000009_message_events_and_audit.down.sql`
+  - [ ] Package `internal/audit/` (models, repository, postgres implementation, service, event tracer)
+- [ ] **W2.10.2 Mail Queue Management (`internal/queue/`)**
+  - [ ] Postfix queue driver (`postqueue -p`, `postcat`, `postsuper -d/-h/-r`, `postqueue -f`)
+  - [ ] Robust queue parser for Active, Deferred, Hold, Corrupt, Incoming queues
+  - [ ] Queue inspection, deletion, hold, retry, and flush controls
+  - [ ] CLI: `mailopen queue status / list / inspect / retry / delete / flush`
+- [ ] **W2.10.3 Bounce Processing & Enhanced Status Code Classification (`internal/bounce/`)**
+  - [ ] Enhanced status code parser (`5.1.1`, `4.7.1`, `5.7.1`, `5.2.2`, etc.)
+  - [ ] Category classifier (RecipientUnknown, MailboxFull, DomainUnknown, PolicyRejection, SpamRejection, TLSFailure, etc.)
+  - [ ] DSN multipart/report parser & unit tests
+- [ ] **W2.10.4 Storage Quota Engine & Reconciliation (`internal/quota/`)**
+  - [ ] Fast path quota lookup & counter validation
+  - [ ] Background Maildir++ disk usage calculator & DB reconciler
+  - [ ] Thresholds (<80% OK, 80-90% Warning, 90-99% Critical, >=100% Full)
+  - [ ] CLI: `mailopen quota show <email>`, `mailopen quota reconcile <email>`
+- [ ] **W2.10.5 Structured Logging (`log/slog`) & Secret Masking (`internal/logger/`)**
+  - [ ] JSON slog logger with zero-secret filter (masks passwords, AUTH PLAIN hashes, DKIM private keys, email bodies)
+- [ ] **W2.10.6 Metrics & Health Endpoints (`internal/metrics/`, `internal/health/`)**
+  - [ ] Prometheus metrics registry (`/metrics`)
+  - [ ] Health endpoints: `/health/live`, `/health/ready`, `/health/deep`
+  - [ ] CLI: `mailopen health [live|ready|deep]`
+- [ ] **W2.10.7 Disaster Recovery, Backup & Restore (`internal/backup/`)**
+  - [ ] Complete bundle: PostgreSQL dump + Maildir + DKIM private keys + TLS private keys + Configs + `backup.json` manifest
+  - [ ] AES-256-GCM encrypted backup archive
+  - [ ] Backup verification with SHA-256 checksums
+  - [ ] Disposable environment restore testing
+  - [ ] CLI: `mailopen backup create / verify / restore`
+- [ ] **W2.10.8 Configuration Validator & Full System Doctor**
+  - [ ] `mailopen config validate` across all 8 subsystems
+  - [ ] `mailopen system doctor` (10-category comprehensive diagnostic report)
+  - [ ] `mailopen message trace <message-id>`
+- [ ] **W2.10.9 Full Regression & Integration Tests**
+  - [ ] Queue parser and management tests
+  - [ ] Bounce classification tests
+  - [ ] Quota calculation & reconciliation tests
+  - [ ] Audit log & event tracing tests
+  - [ ] Backup creation, encryption, verification, and restore tests
+  - [ ] Full regression across W2.1 - W2.10 (`go test -count=1 -v ./...` 100% PASS)

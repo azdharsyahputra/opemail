@@ -103,12 +103,28 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+func getDB() (*sql.DB, error) {
+	if db != nil {
+		return db, nil
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	return database.NewPostgresDB(cfg.DatabaseURL)
+}
+
+func loadAppConfig() (*config.Config, error) {
+	return config.Load()
+}
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
+
 
 func init() {
 	rootCmd.AddCommand(domainCmd)
@@ -124,7 +140,16 @@ func init() {
 	rootCmd.AddCommand(spamCmd)
 	rootCmd.AddCommand(antivirusCmd)
 	rootCmd.AddCommand(abuseCmd)
+	rootCmd.AddCommand(queueCmd)
+	rootCmd.AddCommand(bounceCmd)
+	rootCmd.AddCommand(quotaCmd)
+	rootCmd.AddCommand(backupCmd)
+	rootCmd.AddCommand(healthCmd)
+	rootCmd.AddCommand(systemCmd)
+	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(auditCmd)
 }
+
 
 
 

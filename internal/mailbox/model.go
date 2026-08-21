@@ -29,6 +29,7 @@ type Mailbox struct {
 	Email              string    `json:"email"`
 	PasswordHash       string    `json:"-"`
 	QuotaBytes         int64     `json:"quota_bytes"`
+	UsedBytes          int64     `json:"used_bytes"`
 	Status             string    `json:"status"`
 	ProvisioningStatus string    `json:"provisioning_status"`
 	CreatedAt          time.Time `json:"created_at"`

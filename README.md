@@ -1,39 +1,22 @@
 # openmail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening, Inbound Security, Spam/Antivirus filtering, Outbound submission rate limits, and native Maildir++ storage.
+`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening, Inbound Security, Spam/Antivirus filtering, Outbound submission rate limits, Postfix Mail Queue management, Bounce classification, Message Lifecycle Events, Quota reconciliation, Structured JSON logging, Prometheus metrics, Health probes, and Disaster Recovery encrypted backup/restore.
 
 ## Architecture
 
 ```text
-                         INTERNET
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-          INBOUND                       OUTBOUND
-             │                             │
-             ▼                             ▼
-        Postfix :25                  Postfix :587
-             │                             │
-             ├── Connection Controls       ├── STARTTLS (Mandatory)
-             ├── HELO/EHLO Validation      ├── SMTP AUTH (Dovecot SASL)
-             ├── Recipient Validation      ├── Outbound Rate Limits
-             ├── SPF Inbound Evaluation    │
-             ├── DKIM Inbound Verification ▼
-             ├── DMARC Alignment Check  OpenDKIM Milter Signing
-             │                             │
-             ▼                             ▼
-        Rspamd & ClamAV                 Internet
-        (Spam & Antivirus)
-             │
-             ├── Header Injection
-             │   (Authentication-Results, Received-SPF)
-             ├── Quarantine / Junk
-             │
-             ▼
-        Maildir/new/
-             │
-             ▼
-          Dovecot
+                                MailOpen Control Plane
+                                          │
+        ┌───────────────────┬─────────────┴─────────────┬───────────────────┐
+        │                   │                           │                   │
+  CONTROL PLANE        MAIL ENGINES                 SECURITY          OBSERVABILITY & QUEUE
+        │                   │                           │                   │
+   PostgreSQL            Postfix                     TLS Certs          Structured slog
+   Domains & Mailboxes   Dovecot IMAP/IMAPS          DKIM Keystore      Prometheus /metrics
+   Aliases               Maildir++ Storage           SPF & DMARC        Health Live/Ready/Deep
+   Mailbox Quotas        Postfix Queue Controller    Rspamd & ClamAV    Message Events & Trace
+   Audit Trail Log       (postqueue/postcat/super)   Anti-Abuse Limits  Audit Trail Logs
+                                                                        Backup & Disaster Recovery
 ```
 
 Client Configuration:
@@ -61,6 +44,45 @@ go build -o bin/mailopen ./cmd/mailopen
 ```
 
 ### 4. CLI Usage Examples
+
+#### Production Hardening, Observability & Mail Queue (W2.10)
+```bash
+# Postfix Mail Queue Management
+./bin/mailopen queue status
+./bin/mailopen queue list [--status deferred]
+./bin/mailopen queue inspect <queue-id>
+./bin/mailopen queue retry <queue-id>
+./bin/mailopen queue delete <queue-id>
+./bin/mailopen queue flush
+
+# Bounce Classification & DSN parsing
+./bin/mailopen bounce classify "550 5.1.1 User unknown in virtual mailbox table"
+./bin/mailopen bounce parse /path/to/dsn.eml
+
+# Storage Quota & Reconciliation
+./bin/mailopen quota show ajar@example.com
+./bin/mailopen quota reconcile ajar@example.com
+
+# Message Lifecycle Audit Trail & Trace
+./bin/mailopen message events <message-id>
+./bin/mailopen message trace <message-id>
+./bin/mailopen audit list --limit 20
+
+# Health Checks & Metrics
+./bin/mailopen health live
+./bin/mailopen health ready
+./bin/mailopen health deep
+./bin/mailopen health serve --port 8080
+
+# Disaster Recovery (Encrypted Backup & Restore)
+./bin/mailopen backup create --passphrase "SecretPassphrase2026!" --out /tmp/mailopen-backup.tar.gz.enc
+./bin/mailopen backup verify /tmp/mailopen-backup.tar.gz.enc --passphrase "SecretPassphrase2026!"
+./bin/mailopen backup restore /tmp/mailopen-backup.tar.gz.enc --passphrase "SecretPassphrase2026!" --target-dir /tmp/restored
+
+# Full System Diagnostics & Config Validation
+./bin/mailopen system doctor
+./bin/mailopen config validate
+```
 
 #### Inbound Mail Security & Abuse Controls (W2.9)
 ```bash

@@ -93,9 +93,22 @@ func (m *mockMailboxRepo) UpdatePasswordHash(ctx context.Context, id uuid.UUID, 
 	return mailbox.ErrMailboxNotFound
 }
 
+func (m *mockMailboxRepo) UpdateUsedBytes(ctx context.Context, id uuid.UUID, usedBytes int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mb := range m.mailboxes {
+		if mb.ID == id {
+			mb.UsedBytes = usedBytes
+			return nil
+		}
+	}
+	return mailbox.ErrMailboxNotFound
+}
+
 func (m *mockMailboxRepo) Delete(ctx context.Context, email string) error {
 	return nil
 }
+
 
 
 
