@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -256,12 +257,16 @@ func (s *service) GetPolicy(ctx context.Context, domainName string) (*DomainMail
 	policy, err := s.repo.GetPolicy(ctx, dom.ID)
 	if err != nil {
 		if errors.Is(err, ErrPolicyNotFound) {
+			serverIP := os.Getenv("SERVER_IP")
+			if serverIP == "" {
+				serverIP = "157.20.254.39"
+			}
 			// Return default initial policy
 			return &DomainMailPolicy{
 				DomainID:    dom.ID,
 				Domain:      domainName,
-				SPFPolicy:   "v=spf1 mx ~all",
-				DMARCPolicy: "v=DMARC1; p=none",
+				SPFPolicy:   fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP),
+				DMARCPolicy: fmt.Sprintf("v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@%s", domainName),
 			}, nil
 		}
 		return nil, err

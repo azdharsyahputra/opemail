@@ -148,10 +148,10 @@ func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	spfVal := fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP)
 	dmarcVal := fmt.Sprintf("v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@%s", domName)
 	if pol != nil {
-		if pol.SPFPolicy != "" {
+		if pol.SPFPolicy != "" && pol.SPFPolicy != "v=spf1 mx ~all" {
 			spfVal = pol.SPFPolicy
 		}
-		if pol.DMARCPolicy != "" {
+		if pol.DMARCPolicy != "" && pol.DMARCPolicy != "v=DMARC1; p=none" {
 			dmarcVal = pol.DMARCPolicy
 		}
 	}
