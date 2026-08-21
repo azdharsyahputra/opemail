@@ -31,8 +31,11 @@ go test -count=1 ./tests/recovery
 go test -count=1 ./tests/concurrency
 go test -count=1 ./tests/fuzz
 go test -count=1 ./tests/e2e
+go test -count=1 ./tests/ga
 
 # 5. Full Race Detection
+
+
 go test -race -count=1 ./tests/concurrency
 
 echo ""
