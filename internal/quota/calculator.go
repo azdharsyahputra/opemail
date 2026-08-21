@@ -3,7 +3,9 @@ package quota
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
+
 
 type StorageScanResult struct {
 	TotalBytes   int64
@@ -28,10 +30,11 @@ func CalculateMaildirUsage(maildirPath string) (StorageScanResult, error) {
 		if !info.IsDir() {
 			// Count regular email files in cur, new, and subfolders (exclude control files like dovecot.index)
 			name := info.Name()
-			if !filepath.HasPrefix(name, "dovecot") && !filepath.HasPrefix(name, "maildirsize") && !filepath.HasPrefix(name, ".") {
+			if !strings.HasPrefix(name, "dovecot") && !strings.HasPrefix(name, "maildirsize") && !strings.HasPrefix(name, ".") {
 				result.TotalBytes += info.Size()
 				result.MessageCount++
 			}
+
 		}
 		return nil
 	})

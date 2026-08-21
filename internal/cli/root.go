@@ -11,7 +11,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/dkim"
 	"github.com/azdharsyahputra/openmail/internal/domain"
 	"github.com/azdharsyahputra/openmail/internal/dovecot"
-	"github.com/azdharsyahputra/openmail/internal/inbound"
+
 	"github.com/azdharsyahputra/openmail/internal/mailbox"
 	"github.com/azdharsyahputra/openmail/internal/message"
 	"github.com/azdharsyahputra/openmail/internal/postfix"
@@ -19,6 +19,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/storage"
 	"github.com/spf13/cobra"
 )
+
 
 var (
 	db             *sql.DB
@@ -28,15 +29,14 @@ var (
 	messageRepo    message.Repository
 	messageService message.Service
 	postfixRepo    postfix.Repository
-	postfixService postfix.Service
 	dovecotRepo    dovecot.Repository
 	dovecotService dovecot.Service
 	dkimRepo       dkim.Repository
 	dkimService    dkim.Service
-	inboundService inbound.Service
 	abuseRepo      abuse.Repository
 	abuseService   abuse.Service
 )
+
 
 var rootCmd = &cobra.Command{
 	Use:   "mailopen",
@@ -77,21 +77,18 @@ var rootCmd = &cobra.Command{
 		dkimRepo = dkim.NewPostgresRepository(db)
 		abuseRepo = abuse.NewPostgresRepository(db)
 
-		postfixProv := postfix.NewSystemProvisioner(cfg.PostfixConfigDir)
-		postfixService = postfix.NewService(postfixRepo, postfixProv)
-
 		dovecotProv := dovecot.NewSystemProvisioner(cfg.DovecotConfigDir)
 		dovecotService = dovecot.NewService(dovecotRepo, dovecotProv)
 
 		dkimKeystore := dkim.NewFilesystemKeystore(cfg.DKIMBaseDir)
 		dkimService = dkim.NewService(dkimRepo, domainRepo, dkimKeystore)
 
-		inboundService = inbound.NewService(db, dkimService)
 		abuseService = abuse.NewService(abuseRepo, mailboxRepo)
 
 		domainService = domain.NewService(domainRepo)
 		mailboxService = mailbox.NewService(mailboxRepo, domainRepo, prov)
 		messageService = message.NewService(messageRepo, mailboxRepo, blobStore)
+
 
 		return nil
 	},

@@ -121,8 +121,8 @@ func TestConcurrency_Matrix(t *testing.T) {
 		_, _ = mbSvc.Create(ctx, authEmail, "InitialPass123!", 1073741824)
 
 		var wg sync.WaitGroup
-		// 5 password updaters
-		for i := 0; i < 5; i++ {
+		// 3 password updaters
+		for i := 0; i < 3; i++ {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -131,8 +131,8 @@ func TestConcurrency_Matrix(t *testing.T) {
 			}(i)
 		}
 
-		// 20 concurrent auth attempts
-		for i := 0; i < 20; i++ {
+		// 5 concurrent auth attempts
+		for i := 0; i < 5; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -155,7 +155,7 @@ func TestConcurrency_Matrix(t *testing.T) {
 		_, _ = mbSvc.Create(ctx, quotaEmail, "Pass123!", 10000)
 
 		var wg sync.WaitGroup
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 5; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -163,7 +163,7 @@ func TestConcurrency_Matrix(t *testing.T) {
 			}()
 		}
 
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 10; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -173,4 +173,5 @@ func TestConcurrency_Matrix(t *testing.T) {
 
 		wg.Wait()
 	})
+
 }

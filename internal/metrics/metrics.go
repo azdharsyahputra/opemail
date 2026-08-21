@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 )
 
 type Registry struct {
-	mu sync.RWMutex
-
 	// Counters
+
 	SMTPConnectionsTotal atomic.Int64
 	SMTPAuthSuccessTotal atomic.Int64
 	SMTPAuthFailureTotal atomic.Int64

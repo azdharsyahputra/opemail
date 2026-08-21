@@ -110,8 +110,14 @@ func TestIntegration_AbuseAndRateLimiting(t *testing.T) {
 		testIP := "198.51.100.99"
 
 		// Connections 1, 2, 3 -> Allow
-		if !limiter.AllowConnection(testIP) || !limiter.AllowConnection(testIP) || !limiter.AllowConnection(testIP) {
-			t.Errorf("expected first 3 connections to be allowed")
+		if !limiter.AllowConnection(testIP) {
+			t.Errorf("expected connection 1 to be allowed")
+		}
+		if !limiter.AllowConnection(testIP) {
+			t.Errorf("expected connection 2 to be allowed")
+		}
+		if !limiter.AllowConnection(testIP) {
+			t.Errorf("expected connection 3 to be allowed")
 		}
 
 		// Connection 4 -> Blocked
@@ -120,14 +126,21 @@ func TestIntegration_AbuseAndRateLimiting(t *testing.T) {
 		}
 
 		// Messages 1, 2, 3 -> Allow
-		if !limiter.AllowMessage(testIP) || !limiter.AllowMessage(testIP) || !limiter.AllowMessage(testIP) {
-			t.Errorf("expected first 3 messages to be allowed")
+		if !limiter.AllowMessage(testIP) {
+			t.Errorf("expected message 1 to be allowed")
+		}
+		if !limiter.AllowMessage(testIP) {
+			t.Errorf("expected message 2 to be allowed")
+		}
+		if !limiter.AllowMessage(testIP) {
+			t.Errorf("expected message 3 to be allowed")
 		}
 
 		// Message 4 -> Blocked
 		if limiter.AllowMessage(testIP) {
 			t.Errorf("expected 4th message to be blocked")
 		}
+
 
 		// After window expires -> Allowed again
 		time.Sleep(600 * time.Millisecond)

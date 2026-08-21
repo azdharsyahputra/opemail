@@ -19,9 +19,9 @@ import (
 var (
 	postfixConfigOutDir     string
 	postfixTargetConfigPath string
-	postfixAuthPassword     string
 	submissionAuthPassword  string
 )
+
 
 var postfixCmd = &cobra.Command{
 	Use:   "postfix",

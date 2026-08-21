@@ -76,13 +76,13 @@ func PublicKeyMatches(cert *x509.Certificate, privKey crypto.PrivateKey) bool {
 		if !ok {
 			return false
 		}
-		return k.N.Cmp(certPub.N) == 0 && k.E == certPub.E
+		return k.PublicKey.Equal(certPub)
 	case *ecdsa.PrivateKey:
 		certPub, ok := cert.PublicKey.(*ecdsa.PublicKey)
 		if !ok {
 			return false
 		}
-		return k.X.Cmp(certPub.X) == 0 && k.Y.Cmp(certPub.Y) == 0 && k.Curve == certPub.Curve
+		return k.PublicKey.Equal(certPub)
 	case ed25519.PrivateKey:
 		certPub, ok := cert.PublicKey.(ed25519.PublicKey)
 		if !ok {
@@ -95,6 +95,7 @@ func PublicKeyMatches(cert *x509.Certificate, privKey crypto.PrivateKey) bool {
 		return false
 	}
 }
+
 
 // ValidateBytes performs full validation of in-memory certificate and private key against a given hostname.
 func ValidateBytes(certPEM, keyPEM []byte, hostname string) (*CertificateReport, *Certificate, error) {
