@@ -298,7 +298,10 @@ deploy_cluster() {
     fi
     success "Database is ready."
 
-    info "Creating internal daemon database roles..."
+    info "Applying database schema migrations..."
+    docker compose exec -T backend mailopen migrate up >/dev/null 2>&1 || true
+
+    info "Creating internal daemon database roles & granting complete privileges..."
     docker compose exec -T postgres psql -U mailopen -d mailopen -c "
     DO \$\$
     BEGIN
@@ -309,11 +312,11 @@ deploy_cluster() {
           CREATE ROLE mailopen_dovecot WITH LOGIN PASSWORD 'dovecot_secret';
        END IF;
     END \$\$;
+    GRANT USAGE ON SCHEMA public TO mailopen_postfix, mailopen_dovecot;
     GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mailopen_postfix, mailopen_dovecot;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mailopen_postfix, mailopen_dovecot;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO mailopen_postfix, mailopen_dovecot;
     " >/dev/null 2>&1 || true
-
-    info "Applying database schema migrations..."
-    docker compose exec -T backend mailopen migrate up >/dev/null 2>&1 || true
 
     info "Generating Postfix and Dovecot atomic daemon maps..."
     docker compose exec -T backend mailopen postfix config generate --out-dir /data/postfix --target-path /etc/postfix >/dev/null 2>&1 || true
@@ -325,6 +328,9 @@ deploy_cluster() {
     info "Bootstrapping primary domain '${DOMAIN}' and admin account '${ADMIN_EMAIL}'..."
     docker compose exec -T backend mailopen domain create "${DOMAIN}" || true
     docker compose exec -T backend mailopen mailbox create "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" --quota 10737418240 || true
+
+    info "Generating default 2048-bit DKIM key for '${DOMAIN}'..."
+    docker compose exec -T backend mailopen dkim generate "${DOMAIN}" --selector mail >/dev/null 2>&1 || true
 
     success "Cluster deployment & provisioning complete!"
 }
