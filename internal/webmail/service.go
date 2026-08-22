@@ -674,9 +674,8 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 
 	rawBytes := buf.Bytes()
 
-	// 1. Deliver to local Postfix MTA
-	mtaAddr := fmt.Sprintf("%s:%d", s.mtaHost, s.mtaPort)
-	targets := []string{"postfix:25", mtaAddr, "127.0.0.1:25", "localhost:25"}
+	// 1. Deliver to local Postfix MTA (Submission :587 & MTA :25)
+	targets := []string{"postfix:587", "postfix:25", "127.0.0.1:587", "127.0.0.1:25", "localhost:587", "localhost:25"}
 	var errMsgs []string
 	delivered := false
 	for _, target := range targets {
