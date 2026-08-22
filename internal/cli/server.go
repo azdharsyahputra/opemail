@@ -23,6 +23,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/quota"
 	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
+	"github.com/azdharsyahputra/openmail/internal/webmail"
 	"github.com/spf13/cobra"
 )
 
@@ -85,6 +86,7 @@ var serverCmd = &cobra.Command{
 		identSvc := identity.NewService(cfg.IdentityProvider, providers, mbRepo, domRepo, mbSvc)
 
 		healthHandler := handler.NewHealthHandler(db, qSvc, cfg.VmailDir, cfg.TLSBaseDir, cfg.DKIMBaseDir)
+		webmailSvc := webmail.NewMaildirService(cfg.VmailDir, "postfix", 25, logger)
 
 		router := api.NewRouter(api.RouterDependencies{
 			Logger:          logger,
@@ -103,6 +105,7 @@ var serverCmd = &cobra.Command{
 			SettingRepo:     settingRepo,
 			HealthHandler:   healthHandler,
 			MetricsRegistry: metrics.DefaultRegistry,
+			WebmailService:  webmailSvc,
 		})
 
 

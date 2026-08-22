@@ -18,6 +18,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/quota"
 	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
+	"github.com/azdharsyahputra/openmail/internal/webmail"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,6 +40,7 @@ type RouterDependencies struct {
 	SettingRepo     system.SettingRepository
 	HealthHandler   *handler.HealthHandler
 	MetricsRegistry *metrics.Registry
+	WebmailService  webmail.Service
 }
 
 func NewRouter(deps RouterDependencies) http.Handler {
@@ -166,6 +168,21 @@ func NewRouter(deps RouterDependencies) http.Handler {
 			cr.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/", configH.Get)
 			cr.With(middleware.RequireRole("admin")).Put("/", configH.Update)
 		})
+
+		// Webmail (Accessible to all authenticated users for their own mailbox)
+		if deps.WebmailService != nil {
+			webmailH := handler.NewWebmailHandler(deps.WebmailService)
+			apiGroup.Route("/api/v1/webmail", func(wr chi.Router) {
+				wr.With(middleware.RequireRole("admin", "operator", "auditor", "user")).Get("/folders", webmailH.ListFolders)
+				wr.With(middleware.RequireRole("admin", "operator", "auditor", "user")).Get("/messages", webmailH.ListMessages)
+				wr.With(middleware.RequireRole("admin", "operator", "auditor", "user")).Get("/messages/{id}", webmailH.GetMessage)
+				wr.With(middleware.RequireRole("admin", "operator", "user")).Post("/send", webmailH.SendMessage)
+				wr.With(middleware.RequireRole("admin", "operator", "user")).Put("/messages/{id}/read", webmailH.MarkRead)
+				wr.With(middleware.RequireRole("admin", "operator", "user")).Post("/messages/{id}/move", webmailH.MoveMessage)
+				wr.With(middleware.RequireRole("admin", "operator", "user")).Delete("/messages/{id}", webmailH.DeleteMessage)
+				wr.With(middleware.RequireRole("admin", "operator", "auditor", "user")).Get("/messages/{id}/attachments/{attId}", webmailH.GetAttachment)
+			})
+		}
 
 		// System
 		apiGroup.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/api/v1/system/status", deps.HealthHandler.Ready)

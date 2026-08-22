@@ -42,6 +42,13 @@ func GetClaims(ctx context.Context) *token.Claims {
 	return nil
 }
 
+func GetEmail(ctx context.Context) string {
+	if c := GetClaims(ctx); c != nil {
+		return c.Email
+	}
+	return ""
+}
+
 func respondUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
 	reqID, _ := r.Context().Value(RequestIDKey).(string)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
