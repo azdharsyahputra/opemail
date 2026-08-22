@@ -118,6 +118,18 @@ func (m *mockMailboxRepo) UpdateUsedBytes(ctx context.Context, id uuid.UUID, use
 	return mailbox.ErrMailboxNotFound
 }
 
+func (m *mockMailboxRepo) UpdateQuotaBytes(ctx context.Context, id uuid.UUID, quotaBytes int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mb := range m.mailboxes {
+		if mb.ID == id {
+			mb.QuotaBytes = quotaBytes
+			return nil
+		}
+	}
+	return mailbox.ErrMailboxNotFound
+}
+
 func (m *mockMailboxRepo) Delete(ctx context.Context, email string) error {
 	return nil
 }
