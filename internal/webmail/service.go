@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -676,7 +677,7 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 	// 1. Deliver to local Postfix MTA
 	mtaAddr := fmt.Sprintf("%s:%d", s.mtaHost, s.mtaPort)
 	targets := []string{"postfix:25", mtaAddr, "127.0.0.1:25", "localhost:25"}
-	var lastErr error
+	var errMsgs []string
 	delivered := false
 	for _, target := range targets {
 		if target == "" || target == ":0" {
@@ -689,14 +690,15 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 			}
 			break
 		} else {
-			lastErr = err
+			errMsgs = append(errMsgs, fmt.Sprintf("[%s: %v]", target, err))
 		}
 	}
 	if !delivered {
+		fullErr := strings.Join(errMsgs, " | ")
 		if s.logger != nil {
-			s.logger.Error("failed to submit email to Postfix MTA", "from", cleanFrom, "to", cleanRecipients, "error", lastErr)
+			s.logger.Error("failed to submit email to Postfix MTA", "from", cleanFrom, "to", cleanRecipients, "error", fullErr)
 		}
-		return nil, fmt.Errorf("failed to submit email to Postfix MTA: %w", lastErr)
+		return nil, fmt.Errorf("failed to submit email to Postfix MTA: %s", fullErr)
 	}
 
 	// 2. Save a copy into .Sent folder of sender
@@ -791,7 +793,7 @@ func (s *MaildirService) GetAttachment(ctx context.Context, email, folder, messa
 func sendRawSMTP(addr, from string, recipients []string, body []byte) error {
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("dial %s: %w", addr, err)
+		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()
 
@@ -802,29 +804,37 @@ func sendRawSMTP(addr, from string, recipients []string, body []byte) error {
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return fmt.Errorf("smtp client init %s: %w", addr, err)
+		return fmt.Errorf("smtp client init: %w", err)
 	}
 	defer client.Close()
 
 	_ = client.Hello("mailopen.local")
 
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		tlsConfig := &tls.Config{
+			ServerName:         host,
+			InsecureSkipVerify: true,
+		}
+		_ = client.StartTLS(tlsConfig)
+	}
+
 	if err := client.Mail(from); err != nil {
-		return fmt.Errorf("MAIL FROM <%s> on %s: %w", from, addr, err)
+		return fmt.Errorf("MAIL FROM <%s>: %w", from, err)
 	}
 	for _, rcpt := range recipients {
 		if err := client.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("RCPT TO <%s> on %s: %w", rcpt, addr, err)
+			return fmt.Errorf("RCPT TO <%s>: %w", rcpt, err)
 		}
 	}
 	w, err := client.Data()
 	if err != nil {
-		return fmt.Errorf("DATA on %s: %w", addr, err)
+		return fmt.Errorf("DATA: %w", err)
 	}
 	if _, err := w.Write(body); err != nil {
-		return fmt.Errorf("write DATA on %s: %w", addr, err)
+		return fmt.Errorf("write DATA: %w", err)
 	}
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("close DATA on %s: %w", addr, err)
+		return fmt.Errorf("close DATA: %w", err)
 	}
 	return client.Quit()
 }
