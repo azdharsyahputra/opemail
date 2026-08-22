@@ -36,12 +36,19 @@ func RunInboundDoctor(ctx context.Context, db *sql.DB, postfixConfigDir string) 
 	}
 
 	// 1. Inbound Port :25 Listener
-	conn25, err := net.DialTimeout("tcp", "127.0.0.1:25", 500*time.Millisecond)
-	if err == nil {
-		_ = conn25.Close()
-		addCheck("SMTP Inbound", "Port 25 Listener", true, "127.0.0.1:25 listening")
+	targets := []string{"postfix:25", "127.0.0.1:25", "localhost:25"}
+	var connected bool
+	for _, target := range targets {
+		if conn, err := net.DialTimeout("tcp", target, 600*time.Millisecond); err == nil {
+			_ = conn.Close()
+			connected = true
+			break
+		}
+	}
+	if connected {
+		addCheck("SMTP Inbound", "Port 25 Listener", true, "SMTP port :25 listening")
 	} else {
-		addCheck("SMTP Inbound", "Port 25 Listener", false, fmt.Sprintf("Port 25 unreachable: %v", err))
+		addCheck("SMTP Inbound", "Port 25 Listener", false, "Port 25 unreachable")
 	}
 
 	// 2. OpenDKIM Milter Socket

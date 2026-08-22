@@ -162,9 +162,16 @@ func RunDoctor(ctx context.Context, repo Repository, configDir, vmailRoot string
 	})
 
 	// 5. Protocol Check (IMAP :143)
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:143", 500*time.Millisecond)
-	if err == nil {
-		_ = conn.Close()
+	targets := []string{"dovecot:143", "127.0.0.1:143", "localhost:143"}
+	var connected bool
+	for _, target := range targets {
+		if conn, err := net.DialTimeout("tcp", target, 600*time.Millisecond); err == nil {
+			_ = conn.Close()
+			connected = true
+			break
+		}
+	}
+	if connected {
 		report.ProtocolChecks = append(report.ProtocolChecks, CheckItem{
 			Category: "Protocols",
 			Name:     "IMAP :143",

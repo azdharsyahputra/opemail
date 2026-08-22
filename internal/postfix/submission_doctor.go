@@ -72,9 +72,16 @@ func RunSubmissionDoctor(ctx context.Context, repo Repository, senderAuthorizer 
 	}
 
 	// 2. Listener Check (TCP :587)
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:587", 500*time.Millisecond)
-	if err == nil {
-		_ = conn.Close()
+	targets := []string{"postfix:587", "127.0.0.1:587", "localhost:587"}
+	var connected bool
+	for _, target := range targets {
+		if conn, err := net.DialTimeout("tcp", target, 600*time.Millisecond); err == nil {
+			_ = conn.Close()
+			connected = true
+			break
+		}
+	}
+	if connected {
 		report.ListenerChecks = append(report.ListenerChecks, CheckItem{
 			Category: "Listener",
 			Name:     "TCP :587",
