@@ -89,7 +89,7 @@ smtpd_helo_required = yes
 smtpd_delay_reject = yes
 smtpd_relay_restrictions = permit_mynetworks, reject_unauth_destination
 
-# Inbound SMTP :25 STARTTLS (Offered, minimum TLS 1.2, NO AUTH on port 25)
+# Inbound SMTP :25 & :587 STARTTLS (Offered, minimum TLS 1.2, NO AUTH on port 25)
 smtpd_tls_security_level = may
 smtpd_tls_cert_file = %s
 smtpd_tls_key_file = %s
@@ -98,6 +98,13 @@ smtpd_tls_mandatory_protocols = >=TLSv1.2
 smtpd_tls_ciphers = medium
 smtpd_tls_mandatory_ciphers = medium
 tls_preempt_cipherlist = no
+
+# Outbound SMTP Client TLS (Opportunistic TLS to external MTAs like Google Gmail, Outlook, Yahoo)
+smtp_tls_security_level = may
+smtp_tls_loglevel = 1
+smtp_tls_protocols = >=TLSv1.2
+smtp_tls_ciphers = medium
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
 
 # OpenDKIM Milter (DKIM Outbound Signing)
 smtpd_milters = %s
