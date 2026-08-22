@@ -200,7 +200,15 @@ func getPublicServerIP() string {
 func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	domName := parseEmailParam(r, "domain")
 	pol, _ := h.dkimService.GetPolicy(r.Context(), domName)
-	dkimRec, _ := h.dkimService.GetDNSRecord(r.Context(), domName, "default")
+
+	var dkimRec *dkim.DNSRecord
+	if activeKey, err := h.dkimService.GetActiveKey(r.Context(), domName); err == nil && activeKey != nil {
+		dkimRec, _ = h.dkimService.GetDNSRecord(r.Context(), domName, activeKey.Selector)
+	} else if dkimRecMail, err := h.dkimService.GetDNSRecord(r.Context(), domName, "mail"); err == nil {
+		dkimRec = dkimRecMail
+	} else {
+		dkimRec, _ = h.dkimService.GetDNSRecord(r.Context(), domName, "default")
+	}
 
 	serverIP := getPublicServerIP()
 
