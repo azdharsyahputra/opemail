@@ -34,7 +34,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Backend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -44,7 +44,7 @@ jobs:
             ${{ env.IMAGE_BACKEND }}:${{ github.sha }}
 
       - name: Build and push Postfix Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/postfix/Dockerfile
@@ -54,7 +54,7 @@ jobs:
             ${{ env.IMAGE_POSTFIX }}:${{ github.sha }}
 
       - name: Build and push Dovecot Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/dovecot/Dockerfile
