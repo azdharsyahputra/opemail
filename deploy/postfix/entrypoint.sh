@@ -26,14 +26,13 @@ postconf -e "smtp_tls_security_level=may" \
             "smtp_tls_CApath=/etc/ssl/certs" 2>/dev/null || true
 
 # Prepare opendkim runtime directories & socket path
-mkdir -p /var/run/opendkim /var/spool/postfix/private /etc/mailopen/opendkim /etc/mailopen/dkim
-chown -R postfix:postfix /var/run/opendkim /var/spool/postfix/private 2>/dev/null || true
+mkdir -p /var/run/opendkim /var/spool/postfix/private /etc/opendkim
+chown -R postfix:postfix /var/run/opendkim /var/spool/postfix/private /etc/opendkim 2>/dev/null || true
 chmod 0770 /var/run/opendkim 2>/dev/null || true
 chmod 0750 /var/spool/postfix/private 2>/dev/null || true
 
-# Auto-generate OpenDKIM config and tables by scanning /etc/mailopen/dkim
-mkdir -p /etc/mailopen/opendkim
-cat << 'EOF' > /etc/mailopen/opendkim/opendkim.conf
+# Auto-generate OpenDKIM config and tables inside /etc/opendkim
+cat << 'EOF' > /etc/opendkim/opendkim.conf
 AutoRestart             Yes
 AutoRestartRate         10/1h
 UMask                   002
@@ -49,13 +48,13 @@ Socket                  local:/var/spool/postfix/private/opendkim
 PidFile                 /var/run/opendkim/opendkim.pid
 UserID                  postfix:postfix
 
-KeyTable                /etc/mailopen/opendkim/KeyTable
-SigningTable            refile:/etc/mailopen/opendkim/SigningTable
-ExternalIgnoreList      /etc/mailopen/opendkim/TrustedHosts
-InternalHosts           /etc/mailopen/opendkim/TrustedHosts
+KeyTable                /etc/opendkim/KeyTable
+SigningTable            refile:/etc/opendkim/SigningTable
+ExternalIgnoreList      /etc/opendkim/TrustedHosts
+InternalHosts           /etc/opendkim/TrustedHosts
 EOF
 
-cat << 'EOF' > /etc/mailopen/opendkim/TrustedHosts
+cat << 'EOF' > /etc/opendkim/TrustedHosts
 127.0.0.1
 ::1
 localhost
@@ -64,27 +63,27 @@ localhost
 192.168.0.0/16
 EOF
 
-> /etc/mailopen/opendkim/KeyTable
-> /etc/mailopen/opendkim/SigningTable
+> /etc/opendkim/KeyTable
+> /etc/opendkim/SigningTable
 
 # Scan all private.key files in /etc/mailopen/dkim
 for key_file in $(find /etc/mailopen/dkim -name "private.key" 2>/dev/null); do
     sel=$(basename $(dirname "$key_file"))
     dom=$(basename $(dirname $(dirname "$key_file")))
     if [ -n "$dom" ] && [ -n "$sel" ] && [ "$dom" != "." ]; then
-        echo "${sel}._domainkey.${dom} ${dom}:${sel}:${key_file}" >> /etc/mailopen/opendkim/KeyTable
-        echo "*@${dom} ${sel}._domainkey.${dom}" >> /etc/mailopen/opendkim/SigningTable
-        echo "${dom} ${sel}._domainkey.${dom}" >> /etc/mailopen/opendkim/SigningTable
+        echo "${sel}._domainkey.${dom} ${dom}:${sel}:${key_file}" >> /etc/opendkim/KeyTable
+        echo "*@${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
+        echo "${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
     fi
 done
 
-chown -R postfix:postfix /etc/mailopen/opendkim /var/spool/postfix/private 2>/dev/null || true
-chmod 0640 /etc/mailopen/opendkim/* 2>/dev/null || true
+chown -R postfix:postfix /etc/opendkim /var/spool/postfix/private /var/run/opendkim 2>/dev/null || true
+chmod 0640 /etc/opendkim/* 2>/dev/null || true
 
 # Start OpenDKIM daemon
 echo "Starting OpenDKIM milter daemon..."
 rm -f /var/run/opendkim/opendkim.pid /var/spool/postfix/private/opendkim
-opendkim -x /etc/mailopen/opendkim/opendkim.conf || true
+opendkim -x /etc/opendkim/opendkim.conf || true
 
 
 # Start Postfix in foreground
