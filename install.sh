@@ -323,8 +323,8 @@ deploy_cluster() {
     docker compose restart postfix dovecot >/dev/null 2>&1
 
     info "Bootstrapping primary domain '${DOMAIN}' and admin account '${ADMIN_EMAIL}'..."
-    docker compose exec -T backend mailopen domain create "${DOMAIN}" >/dev/null 2>&1 || true
-    docker compose exec -T backend mailopen mailbox create "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" --role admin --quota 10240 >/dev/null 2>&1 || true
+    docker compose exec -T backend mailopen domain create "${DOMAIN}" || true
+    docker compose exec -T backend mailopen mailbox create "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" --quota 10737418240 || true
 
     success "Cluster deployment & provisioning complete!"
 }
