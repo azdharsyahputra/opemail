@@ -162,6 +162,9 @@ submission inet n       -       n       -       -       smtpd
   -o smtpd_sender_restrictions=reject_sender_login_mismatch,permit_sasl_authenticated,reject
   -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject
   -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
+  -o milter_macro_daemon_name=ORIGINATING
+  -o smtpd_milters=%s
+  -o non_smtpd_milters=%s
   -o smtpd_client_connection_count_limit=200
   -o smtpd_client_connection_rate_limit=300
 
@@ -193,6 +196,8 @@ scache    unix  -       -       n       -       1       scache
 postlog   unix-dgram n  -       n       -       1       postlogd
 `,
 		senderLoginCFPath,
+		milterSocket,
+		milterSocket,
 	)
 
 	domainsCF := fmt.Sprintf(`# PostgreSQL Virtual Mailbox Domains Map
