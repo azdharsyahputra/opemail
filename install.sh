@@ -2,10 +2,13 @@
 # ==============================================================================
 #  MailOpen - Autonomous Self-Hosted Mail Server Control Plane
 #  One-Line Interactive & Automated Production Installer
-#  Repository: https://github.com/azdharsyahputra/openmail
+#  Repository: https://github.com/azdharsyahputra/opemail
 # ==============================================================================
 
 set -eo pipefail
+
+INSTALL_DIR="/opt/openmail"
+REPO_URL="https://github.com/azdharsyahputra/opemail.git"
 
 # Colors & Formatting
 RED='\033[0;31m'
@@ -30,6 +33,26 @@ warn() {
 
 error() {
     printf "${RED}[ERROR]${NC} %s\n" "$1" >&2
+}
+
+prompt_read() {
+    local prompt_msg="$1"
+    local var_name="$2"
+    local default_val="$3"
+
+    if [ -t 0 ]; then
+        read -r -p "$prompt_msg" input_val
+    elif [ -e /dev/tty ]; then
+        read -r -p "$prompt_msg" input_val </dev/tty
+    else
+        input_val=""
+    fi
+
+    if [ -z "$input_val" ]; then
+        eval "$var_name=\"$default_val\""
+    else
+        eval "$var_name=\"$input_val\""
+    fi
 }
 
 banner() {
@@ -67,13 +90,29 @@ check_os() {
     success "Operating System: $MACHINE"
 }
 
+# Pre-flight Check: Tools & Git
+check_prerequisites() {
+    if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || ! command -v openssl >/dev/null 2>&1; then
+        info "Installing core prerequisites (git, curl, openssl)..."
+        if [ "$MACHINE" = "Linux" ]; then
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq && apt-get install -y -qq git curl openssl
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y git curl openssl
+            elif command -v yum >/dev/null 2>&1; then
+                yum install -y git curl openssl
+            fi
+        fi
+    fi
+    success "Prerequisites (git, curl, openssl) verified."
+}
+
 # Pre-flight Check: Docker & Compose
 check_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         warn "Docker is not installed on this system."
         if [ "$MACHINE" = "Linux" ]; then
-            printf "Would you like to automatically install Docker now? (y/N): "
-            read -r install_docker
+            prompt_read "Would you like to automatically install Docker now? (Y/n): " install_docker "Y"
             if [[ "$install_docker" =~ ^[Yy]$ ]]; then
                 info "Installing Docker via official get.docker.com script..."
                 curl -fsSL https://get.docker.com | sh
@@ -118,9 +157,27 @@ check_ports() {
     done
 }
 
+# Setup installation directory & clone codebase
+setup_codebase() {
+    # If not running inside the repository directory already
+    if [ ! -f "docker-compose.yml" ] || [ ! -f "Dockerfile" ]; then
+        info "Setting up installation directory at ${INSTALL_DIR}..."
+        mkdir -p "${INSTALL_DIR}"
+        cd "${INSTALL_DIR}"
+
+        if [ -d ".git" ]; then
+            info "Updating existing repository in ${INSTALL_DIR}..."
+            git pull -q origin main || true
+        else
+            info "Cloning OpenMail repository..."
+            git clone -q "${REPO_URL}" .
+        fi
+    fi
+    success "Working directory ready: $(pwd)"
+}
+
 # Prompt user for installation configuration
 gather_config() {
-    # Public WAN IP Auto-Detection
     info "Detecting public WAN IPv4..."
     SERVER_IP=$(curl -s --max-time 3 https://api.ipify.org || curl -s --max-time 3 https://ifconfig.me || echo "127.0.0.1")
     success "Detected Public WAN IP: $SERVER_IP"
@@ -131,44 +188,36 @@ gather_config() {
 
     # Domain
     if [ -z "$DOMAIN" ]; then
-        printf "1. Primary Virtual Domain (e.g. example.com): "
-        read -r DOMAIN
         while [ -z "$DOMAIN" ]; do
-            printf "${RED}Domain cannot be empty.${NC} Enter primary domain: "
-            read -r DOMAIN
+            prompt_read "1. Primary Virtual Domain (e.g. example.com): " DOMAIN ""
+            if [ -z "$DOMAIN" ]; then
+                printf "${RED}Domain cannot be empty.${NC}\n"
+            fi
         done
     fi
 
     # Hostname FQDN
     if [ -z "$MAIL_HOSTNAME" ]; then
         DEFAULT_HOSTNAME="mail.${DOMAIN}"
-        printf "2. Mail Server Hostname (default: %s): " "$DEFAULT_HOSTNAME"
-        read -r MAIL_HOSTNAME
-        MAIL_HOSTNAME="${MAIL_HOSTNAME:-$DEFAULT_HOSTNAME}"
+        prompt_read "2. Mail Server Hostname (default: ${DEFAULT_HOSTNAME}): " MAIL_HOSTNAME "$DEFAULT_HOSTNAME"
     fi
 
     # Admin Email
     if [ -z "$ADMIN_EMAIL" ]; then
         DEFAULT_ADMIN="admin@${DOMAIN}"
-        printf "3. Admin Account Email (default: %s): " "$DEFAULT_ADMIN"
-        read -r ADMIN_EMAIL
-        ADMIN_EMAIL="${ADMIN_EMAIL:-$DEFAULT_ADMIN}"
+        prompt_read "3. Admin Account Email (default: ${DEFAULT_ADMIN}): " ADMIN_EMAIL "$DEFAULT_ADMIN"
     fi
 
     # Admin Password
     if [ -z "$ADMIN_PASSWORD" ]; then
         DEFAULT_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 14)
         DEFAULT_PASS="${DEFAULT_PASS}!"
-        printf "4. Admin Password (leave blank for auto-generated: %s): " "$DEFAULT_PASS"
-        read -r ADMIN_PASSWORD
-        ADMIN_PASSWORD="${ADMIN_PASSWORD:-$DEFAULT_PASS}"
+        prompt_read "4. Admin Password (leave blank for auto-generated: ${DEFAULT_PASS}): " ADMIN_PASSWORD "$DEFAULT_PASS"
     fi
 
     # Panel Port
     if [ -z "$PANEL_PORT" ]; then
-        printf "5. Web Panel HTTP Port (default: 3000): "
-        read -r PANEL_PORT
-        PANEL_PORT="${PANEL_PORT:-3000}"
+        prompt_read "5. Web Panel HTTP Port (default: 3000): " PANEL_PORT "3000"
     fi
 
     # API Port
@@ -227,8 +276,8 @@ ENVFILE
 
 # Deploy & Provision Stack
 deploy_cluster() {
-    info "Pulling and launching OpenMail service cluster..."
-    docker compose up -d
+    info "Building and launching OpenMail service cluster..."
+    docker compose up -d --build
 
     info "Waiting for PostgreSQL database to be healthy..."
     local retries=30
@@ -301,15 +350,17 @@ show_summary() {
     printf "   2. Go to ${BOLD}Domains & DNS${NC} to view your Cloudflare DNS records (MX, SPF, DKIM, DMARC).\n"
     printf "   3. Add DNS records to your DNS provider to begin receiving external emails.\n\n"
 
-    printf "Manage cluster anytime with: ${BOLD}docker compose [ps|logs|restart|down]${NC}\n\n"
+    printf "Manage cluster anytime with: ${BOLD}cd /opt/openmail && docker compose [ps|logs|restart|down]${NC}\n\n"
 }
 
 # Main Execution Flow
 main() {
     banner
     check_os
+    check_prerequisites
     check_docker
     check_ports
+    setup_codebase
     gather_config
     setup_environment
     deploy_cluster
