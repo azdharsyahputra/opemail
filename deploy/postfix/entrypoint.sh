@@ -49,7 +49,7 @@ PidFile                 /var/run/opendkim/opendkim.pid
 UserID                  postfix:postfix
 
 KeyTable                /etc/opendkim/KeyTable
-SigningTable            refile:/etc/opendkim/SigningTable
+SigningTable            /etc/opendkim/SigningTable
 ExternalIgnoreList      /etc/opendkim/TrustedHosts
 InternalHosts           /etc/opendkim/TrustedHosts
 EOF
