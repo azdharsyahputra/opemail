@@ -18,13 +18,15 @@ postfix set-permissions 2>/dev/null || true
 newaliases 2>/dev/null || true
 
 # Always enforce outbound TLS encryption for delivering to Google / external MTAs
-postconf -e "smtp_tls_security_level=may" \
-            "smtp_tls_loglevel=1" \
-            "smtp_tls_protocols=>=TLSv1.2" \
-            "smtp_tls_ciphers=medium" \
-            "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt" \
-            "smtp_tls_CApath=/etc/ssl/certs" \
-            "mynetworks=127.0.0.0/8 [::1]/128 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" 2>/dev/null || true
+postconf -e "smtp_tls_security_level=may" 2>/dev/null || true
+postconf -e "smtp_tls_loglevel=1" 2>/dev/null || true
+postconf -e "smtp_tls_protocols=>=TLSv1.2" 2>/dev/null || true
+postconf -e "smtp_tls_ciphers=medium" 2>/dev/null || true
+postconf -e "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt" 2>/dev/null || true
+postconf -e "smtp_tls_CApath=/etc/ssl/certs" 2>/dev/null || true
+postconf -e "mynetworks=127.0.0.0/8 [::1]/128 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" 2>/dev/null || true
+postconf -e "smtpd_relay_restrictions=permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination" 2>/dev/null || true
+postconf -e "smtpd_recipient_restrictions=permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination" 2>/dev/null || true
 
 # Prepare opendkim runtime directories & socket path
 mkdir -p /var/run/opendkim /var/spool/postfix/private /etc/opendkim
