@@ -68,18 +68,28 @@ EOF
 > /etc/opendkim/KeyTable
 > /etc/opendkim/SigningTable
 
-# Copy and secure all private.key files into /etc/opendkim/keys
-for key_file in $(find /etc/mailopen/dkim -name "private.key" 2>/dev/null); do
-    sel=$(basename $(dirname "$key_file"))
-    dom=$(basename $(dirname $(dirname "$key_file")))
-    if [ -n "$dom" ] && [ -n "$sel" ] && [ "$dom" != "." ]; then
-        mkdir -p "/etc/opendkim/keys/${dom}/${sel}"
-        cp "$key_file" "/etc/opendkim/keys/${dom}/${sel}/private.key" 2>/dev/null || true
-        chown -R postfix:postfix "/etc/opendkim/keys/${dom}" 2>/dev/null || true
-        chmod 0600 "/etc/opendkim/keys/${dom}/${sel}/private.key" 2>/dev/null || true
-        echo "${sel}._domainkey.${dom} ${dom}:${sel}:/etc/opendkim/keys/${dom}/${sel}/private.key" >> /etc/opendkim/KeyTable
-        echo "*@${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
-        echo "${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
+# Copy and secure active private.key for each domain into /etc/opendkim/keys
+for dom_dir in /etc/mailopen/dkim/*; do
+    if [ -d "$dom_dir" ]; then
+        dom=$(basename "$dom_dir")
+        if [ "$dom" = "*" ] || [ -z "$dom" ]; then continue; fi
+        
+        # Prefer 'mail' selector if exists, otherwise latest directory
+        if [ -f "$dom_dir/mail/private.key" ]; then
+            sel="mail"
+        else
+            sel=$(ls -1t "$dom_dir" 2>/dev/null | head -n 1)
+        fi
+        
+        if [ -n "$sel" ] && [ -f "$dom_dir/$sel/private.key" ]; then
+            mkdir -p "/etc/opendkim/keys/${dom}/${sel}"
+            cp "$dom_dir/$sel/private.key" "/etc/opendkim/keys/${dom}/${sel}/private.key" 2>/dev/null || true
+            chown -R postfix:postfix "/etc/opendkim/keys/${dom}" 2>/dev/null || true
+            chmod 0600 "/etc/opendkim/keys/${dom}/${sel}/private.key" 2>/dev/null || true
+            echo "${sel}._domainkey.${dom} ${dom}:${sel}:/etc/opendkim/keys/${dom}/${sel}/private.key" >> /etc/opendkim/KeyTable
+            echo "*@${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
+            echo "${dom} ${sel}._domainkey.${dom}" >> /etc/opendkim/SigningTable
+        fi
     fi
 done
 
@@ -89,8 +99,7 @@ chmod 0640 /etc/opendkim/* 2>/dev/null || true
 # Start OpenDKIM daemon
 echo "Starting OpenDKIM milter daemon..."
 rm -f /var/run/opendkim/opendkim.pid /var/spool/postfix/private/opendkim
-opendkim -x /etc/opendkim/opendkim.conf || true
-
+opendkim -x /etc/opendkim/opendkim.conf -p local:/var/spool/postfix/private/opendkim -u postfix:postfix || true
 
 # Start Postfix in foreground
 exec postfix start-fg
