@@ -70,9 +70,10 @@ banner() {
                          |_|               
 BANNER
     printf "${NC}"
-    printf "${BOLD}MailOpen Automated Production Installer${NC}\n"
-    printf "Standard-compliant, Zero-Trust Enterprise Mail Engine\n"
-    printf "=======================================================\n\n"
+    echo -e "${BOLD}MailOpen Automated Production Installer${NC}"
+    echo "Standard-compliant, Zero-Trust Enterprise Mail Engine"
+    echo "======================================================="
+    echo ""
 }
 
 # Pre-flight Check: Operating System
@@ -163,18 +164,17 @@ check_ports() {
 
 # Setup installation directory & clone codebase
 setup_codebase() {
-    if [ ! -f "docker-compose.yml" ] || [ ! -f "Dockerfile" ]; then
-        info "Setting up installation directory at ${INSTALL_DIR}..."
-        mkdir -p "${INSTALL_DIR}"
-        cd "${INSTALL_DIR}"
+    info "Setting up installation directory at ${INSTALL_DIR}..."
+    mkdir -p "${INSTALL_DIR}"
+    cd "${INSTALL_DIR}"
 
-        if [ -d ".git" ]; then
-            info "Updating existing repository in ${INSTALL_DIR}..."
-            git pull -q origin main || true
-        else
-            info "Cloning OpenMail repository..."
-            git clone -q "${REPO_URL}" .
-        fi
+    if [ -d ".git" ]; then
+        info "Syncing latest repository in ${INSTALL_DIR}..."
+        git fetch origin main >/dev/null 2>&1 || true
+        git reset --hard origin/main >/dev/null 2>&1 || true
+    else
+        info "Cloning OpenMail repository..."
+        git clone -q "${REPO_URL}" .
     fi
     success "Working directory ready: $(pwd)"
 }
@@ -186,15 +186,15 @@ gather_config() {
     success "Detected Public WAN IP: $SERVER_IP"
 
     echo ""
-    printf "${BOLD}Please configure your primary mail server settings:${NC}\n"
-    printf "%s\n" "---------------------------------------------------"
+    echo -e "${BOLD}Please configure your primary mail server settings:${NC}"
+    echo "---------------------------------------------------"
 
     # Domain
     if [ -z "$DOMAIN" ]; then
         while [ -z "$DOMAIN" ]; do
             prompt_read "1. Primary Virtual Domain (e.g. example.com): " DOMAIN ""
             if [ -z "$DOMAIN" ]; then
-                printf "${RED}Domain cannot be empty.${NC}\n"
+                echo -e "${RED}Domain cannot be empty.${NC}"
             fi
         done
     fi
@@ -331,29 +331,34 @@ deploy_cluster() {
 
 # Display Installation Summary
 show_summary() {
-    printf "\n"
-    printf "${GREEN}${BOLD}=======================================================${NC}\n"
-    printf "${GREEN}${BOLD}       🎉 MAILOPEN DEPLOYED SUCCESSFULLY!              ${NC}\n"
-    printf "${GREEN}${BOLD}=======================================================${NC}\n\n"
+    echo ""
+    echo -e "${GREEN}${BOLD}=======================================================${NC}"
+    echo -e "${GREEN}${BOLD}       🎉 MAILOPEN DEPLOYED SUCCESSFULLY!              ${NC}"
+    echo -e "${GREEN}${BOLD}=======================================================${NC}"
+    echo ""
 
-    printf "${BOLD}1. Web Control Panel:${NC}\n"
-    printf "   URL           : ${CYAN}http://${SERVER_IP}:${PANEL_PORT}${NC} (or http://localhost:${PANEL_PORT})\n"
-    printf "   Admin User    : ${BOLD}%s${NC}\n" "${ADMIN_EMAIL}"
-    printf "   Admin Password: ${YELLOW}%s${NC}\n\n" "${ADMIN_PASSWORD}"
+    echo -e "${BOLD}1. Web Control Panel:${NC}"
+    echo -e "   URL           : ${CYAN}http://${SERVER_IP}:${PANEL_PORT}${NC} (or http://localhost:${PANEL_PORT})"
+    echo -e "   Admin User    : ${BOLD}${ADMIN_EMAIL}${NC}"
+    echo -e "   Admin Password: ${YELLOW}${ADMIN_PASSWORD}${NC}"
+    echo ""
 
-    printf "${BOLD}2. Mail Service Endpoints:${NC}\n"
-    printf "   SMTP (Inbound): %s:25\n" "${SERVER_IP}"
-    printf "   SMTP (Submit) : %s:587 (STARTTLS)\n" "${SERVER_IP}"
-    printf "   IMAP (Secure) : %s:143 (STARTTLS) / %s:993 (SSL/TLS)\n" "${SERVER_IP}" "${SERVER_IP}"
-    printf "   REST API Docs : http://%s:%s/health/live\n" "${SERVER_IP}" "${API_PORT}"
-    printf "   Prometheus    : http://%s:%s/metrics\n\n" "${SERVER_IP}" "${API_PORT}"
+    echo -e "${BOLD}2. Mail Service Endpoints:${NC}"
+    echo "   SMTP (Inbound): ${SERVER_IP}:25"
+    echo "   SMTP (Submit) : ${SERVER_IP}:587 (STARTTLS)"
+    echo "   IMAP (Secure) : ${SERVER_IP}:143 (STARTTLS) / ${SERVER_IP}:993 (SSL/TLS)"
+    echo "   REST API Docs : http://${SERVER_IP}:${API_PORT}/health/live"
+    echo "   Prometheus    : http://${SERVER_IP}:${API_PORT}/metrics"
+    echo ""
 
-    printf "${BOLD}3. Recommended Next Steps:${NC}\n"
-    printf "   1. Open the Web Panel at ${CYAN}http://%s:%s${NC}\n" "${SERVER_IP}" "${PANEL_PORT}"
-    printf "   2. Go to ${BOLD}Domains & DNS${NC} to view your Cloudflare DNS records (MX, SPF, DKIM, DMARC).\n"
-    printf "   3. Add DNS records to your DNS provider to begin receiving external emails.\n\n"
+    echo -e "${BOLD}3. Recommended Next Steps:${NC}"
+    echo -e "   1. Open the Web Panel at ${CYAN}http://${SERVER_IP}:${PANEL_PORT}${NC}"
+    echo -e "   2. Go to ${BOLD}Domains & DNS${NC} to view your Cloudflare DNS records (MX, SPF, DKIM, DMARC)."
+    echo "   3. Add DNS records to your DNS provider to begin receiving external emails."
+    echo ""
 
-    printf "Manage cluster anytime with: ${BOLD}cd /opt/openmail && docker compose [ps|logs|restart|down]${NC}\n\n"
+    echo -e "Manage cluster anytime with: ${BOLD}cd /opt/openmail && docker compose [ps|logs|restart|down]${NC}"
+    echo ""
 }
 
 # Main Execution Flow
