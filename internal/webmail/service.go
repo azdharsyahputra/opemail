@@ -15,6 +15,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -384,18 +385,40 @@ func (s *MaildirService) GetMessage(ctx context.Context, email, folder, messageI
 }
 
 func (s *MaildirService) findMessageFile(folderDir, messageID string) (string, string, error) {
+	if unescaped, err := url.PathUnescape(messageID); err == nil {
+		messageID = unescaped
+	}
+	if unescaped, err := url.QueryUnescape(messageID); err == nil {
+		messageID = unescaped
+	}
+
 	cleanID := filepath.Base(messageID)
+	baseKey := cleanID
+	if idx := strings.Index(cleanID, ":2,"); idx != -1 {
+		baseKey = cleanID[:idx]
+	}
+	if idx := strings.Index(baseKey, ",U="); idx != -1 {
+		baseKey = baseKey[:idx]
+	}
+	if idx := strings.Index(baseKey, ":"); idx != -1 {
+		baseKey = baseKey[:idx]
+	}
+
 	for _, sub := range []string{"cur", "new"} {
-		p := filepath.Join(folderDir, sub, cleanID)
+		subPath := filepath.Join(folderDir, sub)
+		// 1. Direct match with exact name
+		p := filepath.Join(subPath, cleanID)
 		if _, err := os.Stat(p); err == nil {
 			return p, sub, nil
 		}
-		// Match prefix
-		entries, err := os.ReadDir(filepath.Join(folderDir, sub))
+
+		// 2. Scan directory
+		entries, err := os.ReadDir(subPath)
 		if err == nil {
 			for _, e := range entries {
-				if e.Name() == cleanID || strings.HasPrefix(e.Name(), cleanID) {
-					return filepath.Join(folderDir, sub, e.Name()), sub, nil
+				name := e.Name()
+				if name == cleanID || name == baseKey || strings.HasPrefix(name, baseKey) {
+					return filepath.Join(subPath, name), sub, nil
 				}
 			}
 		}

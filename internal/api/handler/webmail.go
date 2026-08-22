@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/azdharsyahputra/openmail/internal/api/middleware"
@@ -10,6 +11,16 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/webmail"
 	"github.com/go-chi/chi/v5"
 )
+
+func cleanMsgID(raw string) string {
+	if unescaped, err := url.PathUnescape(raw); err == nil {
+		raw = unescaped
+	}
+	if unescaped, err := url.QueryUnescape(raw); err == nil {
+		raw = unescaped
+	}
+	return raw
+}
 
 type WebmailHandler struct {
 	webmailService webmail.Service
@@ -86,7 +97,7 @@ func (h *WebmailHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID := chi.URLParam(r, "id")
+	msgID := cleanMsgID(chi.URLParam(r, "id"))
 	folder := r.URL.Query().Get("folder")
 	if folder == "" {
 		folder = "inbox"
@@ -139,7 +150,7 @@ func (h *WebmailHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID := chi.URLParam(r, "id")
+	msgID := cleanMsgID(chi.URLParam(r, "id"))
 	folder := r.URL.Query().Get("folder")
 	if folder == "" {
 		folder = "inbox"
@@ -170,7 +181,7 @@ func (h *WebmailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID := chi.URLParam(r, "id")
+	msgID := cleanMsgID(chi.URLParam(r, "id"))
 	var req MoveMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DstFolder == "" {
 		response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, "src_folder and dst_folder are required", nil)
@@ -196,7 +207,7 @@ func (h *WebmailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID := chi.URLParam(r, "id")
+	msgID := cleanMsgID(chi.URLParam(r, "id"))
 	folder := r.URL.Query().Get("folder")
 	if folder == "" {
 		folder = "inbox"
@@ -217,8 +228,8 @@ func (h *WebmailHandler) GetAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgID := chi.URLParam(r, "id")
-	attID := chi.URLParam(r, "attId")
+	msgID := cleanMsgID(chi.URLParam(r, "id"))
+	attID := cleanMsgID(chi.URLParam(r, "attId"))
 	folder := r.URL.Query().Get("folder")
 	if folder == "" {
 		folder = "inbox"
