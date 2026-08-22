@@ -3,9 +3,12 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/azdharsyahputra/openmail/internal/api/response"
 	"github.com/azdharsyahputra/openmail/internal/audit"
@@ -135,15 +138,71 @@ func (h *DomainHandler) Doctor(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, report)
 }
 
+var (
+	cachedPublicIP     string
+	cachedPublicIPTime time.Time
+	publicIPMutex      sync.Mutex
+)
+
+func getPublicServerIP() string {
+	if ip := os.Getenv("SERVER_IP"); ip != "" {
+		return strings.TrimSpace(ip)
+	}
+	if ip := os.Getenv("MAIL_SERVER_IP"); ip != "" {
+		return strings.TrimSpace(ip)
+	}
+
+	publicIPMutex.Lock()
+	defer publicIPMutex.Unlock()
+
+	// Return cached IP if checked within last 1 hour
+	if cachedPublicIP != "" && time.Since(cachedPublicIPTime) < time.Hour {
+		return cachedPublicIP
+	}
+
+	// Fetch from fast public IP providers with 1.5s timeout
+	client := &http.Client{Timeout: 1500 * time.Millisecond}
+	endpoints := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	}
+
+	for _, ep := range endpoints {
+		resp, err := client.Get(ep)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			buf := make([]byte, 64)
+			n, _ := resp.Body.Read(buf)
+			resp.Body.Close()
+			ipStr := strings.TrimSpace(string(buf[:n]))
+			if parsedIP := net.ParseIP(ipStr); parsedIP != nil && parsedIP.To4() != nil {
+				cachedPublicIP = ipStr
+				cachedPublicIPTime = time.Now()
+				return ipStr
+			}
+		}
+	}
+
+	// Fallback to local non-loopback outbound socket
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok && localAddr.IP != nil && !localAddr.IP.IsLoopback() {
+			cachedPublicIP = localAddr.IP.String()
+			cachedPublicIPTime = time.Now()
+			return cachedPublicIP
+		}
+	}
+
+	return ""
+}
+
 func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	domName := parseEmailParam(r, "domain")
 	pol, _ := h.dkimService.GetPolicy(r.Context(), domName)
 	dkimRec, _ := h.dkimService.GetDNSRecord(r.Context(), domName, "default")
 
-	serverIP := os.Getenv("SERVER_IP")
-	if serverIP == "" {
-		serverIP = os.Getenv("MAIL_SERVER_IP")
-	}
+	serverIP := getPublicServerIP()
 
 	spfVal := "v=spf1 a mx ~all"
 	if serverIP != "" {
