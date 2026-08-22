@@ -142,10 +142,14 @@ func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 
 	serverIP := os.Getenv("SERVER_IP")
 	if serverIP == "" {
-		serverIP = "157.20.254.39"
+		serverIP = os.Getenv("MAIL_SERVER_IP")
 	}
 
-	spfVal := fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP)
+	spfVal := "v=spf1 a mx ~all"
+	if serverIP != "" {
+		spfVal = fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP)
+	}
+
 	dmarcVal := fmt.Sprintf("v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@%s", domName)
 	if pol != nil {
 		if pol.SPFPolicy != "" && pol.SPFPolicy != "v=spf1 mx ~all" {
@@ -156,12 +160,18 @@ func (h *DomainHandler) DNS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	aValue := serverIP
+	if aValue == "" {
+		aValue = "<YOUR_SERVER_IPV4>"
+	}
+
 	recs := map[string]interface{}{
-		"domain": domName,
+		"domain":    domName,
+		"server_ip": serverIP,
 		"a": map[string]interface{}{
 			"type":  "A",
 			"host":  "mail",
-			"value": serverIP,
+			"value": aValue,
 		},
 		"mx": map[string]interface{}{
 			"type":     "MX",

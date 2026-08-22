@@ -259,13 +259,17 @@ func (s *service) GetPolicy(ctx context.Context, domainName string) (*DomainMail
 		if errors.Is(err, ErrPolicyNotFound) {
 			serverIP := os.Getenv("SERVER_IP")
 			if serverIP == "" {
-				serverIP = "157.20.254.39"
+				serverIP = os.Getenv("MAIL_SERVER_IP")
+			}
+			spfPolicy := "v=spf1 a mx ~all"
+			if serverIP != "" {
+				spfPolicy = fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP)
 			}
 			// Return default initial policy
 			return &DomainMailPolicy{
 				DomainID:    dom.ID,
 				Domain:      domainName,
-				SPFPolicy:   fmt.Sprintf("v=spf1 a mx ip4:%s ~all", serverIP),
+				SPFPolicy:   spfPolicy,
 				DMARCPolicy: fmt.Sprintf("v=DMARC1; p=quarantine; rua=mailto:dmarc-reports@%s", domainName),
 			}, nil
 		}
