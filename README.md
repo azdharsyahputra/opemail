@@ -26,11 +26,23 @@ Client Configuration:
 
 See [docs/architecture.md](docs/architecture.md), [docs/deliverability.md](docs/deliverability.md), and [task.md](task.md) for full architectural details.
 
-## Quick Start
+## Quick Start & Installation
+
+### 🚀 1-Line Automated Production Installer (Recommended)
+Run this command on any fresh Ubuntu/Debian/Rocky Linux or macOS server:
+```bash
+curl -sSL https://raw.githubusercontent.com/azdharsyahputra/openmail/main/install.sh | bash
+```
+
+The installer automatically checks prerequisites, configures secure secrets, provisions PostgreSQL, deploys Postfix/Dovecot/Control Plane, applies database migrations, and boots the Web UI.
+
+---
+
+### Manual Docker Compose Quick Start
 
 ### 1. Start Database & Mail Services Stack
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
+docker compose up -d
 ```
 
 ### 2. Build CLI
