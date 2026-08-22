@@ -94,7 +94,9 @@ for dom_dir in /etc/mailopen/dkim/*; do
 done
 
 chown -R postfix:postfix /etc/opendkim /var/spool/postfix/private /var/run/opendkim 2>/dev/null || true
-chmod 0640 /etc/opendkim/* 2>/dev/null || true
+find /etc/opendkim -type d -exec chmod 0755 {} + 2>/dev/null || true
+find /etc/opendkim -type f -exec chmod 0640 {} + 2>/dev/null || true
+find /etc/opendkim/keys -type f -exec chmod 0600 {} + 2>/dev/null || true
 
 # Start OpenDKIM daemon
 echo "Starting OpenDKIM milter daemon..."
