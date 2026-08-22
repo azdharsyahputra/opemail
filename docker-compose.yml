@@ -35,6 +35,9 @@ services:
       TLS_BASE_DIR: /etc/mailopen/tls
       DKIM_BASE_DIR: /etc/mailopen/dkim
       STORAGE_PATH: /var/mailopen/blobs
+      POSTFIX_HOSTNAME: ${POSTFIX_HOSTNAME:-mail.example.com}
+      TLS_HOSTNAME: ${POSTFIX_HOSTNAME:-mail.example.com}
+      TLSHOSTNAME: ${POSTFIX_HOSTNAME:-mail.example.com}
     ports:
       - "${API_PORT:-8085}:8085"
     volumes:
