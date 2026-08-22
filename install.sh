@@ -187,7 +187,7 @@ gather_config() {
 
     echo ""
     printf "${BOLD}Please configure your primary mail server settings:${NC}\n"
-    printf "---------------------------------------------------\n"
+    printf "%s\n" "---------------------------------------------------"
 
     # Domain
     if [ -z "$DOMAIN" ]; then
