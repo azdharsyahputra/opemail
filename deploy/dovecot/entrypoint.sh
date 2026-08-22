@@ -9,20 +9,28 @@ if [ -d "/config" ] && [ -f "/config/dovecot.conf" ]; then
     chmod 0640 /etc/dovecot/sql/*.conf.ext 2>/dev/null || true
 fi
 
-# Ensure fallback self-signed SSL cert exists
+# Auto-generate fallback TLS certificate if referenced by 10-ssl.conf and missing
+if [ -f "/etc/dovecot/conf.d/10-ssl.conf" ]; then
+    CERT_PATH=$(grep -E '^\s*ssl_cert\s*=' /etc/dovecot/conf.d/10-ssl.conf | sed -E 's/.*<//' | tr -d ' ')
+    KEY_PATH=$(grep -E '^\s*ssl_key\s*=' /etc/dovecot/conf.d/10-ssl.conf | sed -E 's/.*<//' | tr -d ' ')
+
+    if [ -n "$CERT_PATH" ] && [ ! -f "$CERT_PATH" ]; then
+        mkdir -p "$(dirname "$CERT_PATH")" "$(dirname "$KEY_PATH")" 2>/dev/null || true
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout "$KEY_PATH" \
+            -out "$CERT_PATH" \
+            -subj "/CN=mailopen" 2>/dev/null || true
+        chmod 0640 "$KEY_PATH" "$CERT_PATH" 2>/dev/null || true
+    fi
+fi
+
+# Ensure default system fallback cert exists
 mkdir -p /etc/ssl/dovecot
 if [ ! -f "/etc/ssl/dovecot/server.pem" ]; then
-    CERT=$(find /etc/mailopen/tls -name "fullchain.pem" 2>/dev/null | head -n 1)
-    KEY=$(find /etc/mailopen/tls -name "privkey.pem" 2>/dev/null | head -n 1)
-    if [ -n "$CERT" ] && [ -n "$KEY" ]; then
-        cp "$CERT" /etc/ssl/dovecot/server.pem
-        cp "$KEY" /etc/ssl/dovecot/server.key
-    else
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout /etc/ssl/dovecot/server.key \
-            -out /etc/ssl/dovecot/server.pem \
-            -subj "/CN=localhost" 2>/dev/null || true
-    fi
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /etc/ssl/dovecot/server.key \
+        -out /etc/ssl/dovecot/server.pem \
+        -subj "/CN=localhost" 2>/dev/null || true
 fi
 
 # Ensure /var/vmail exists and has correct ownership (vmail:vmail 5000:5000 0750)
