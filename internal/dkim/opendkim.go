@@ -51,7 +51,7 @@ Syslog                  Yes
 SyslogSuccess           Yes
 LogWhy                  Yes
 
-Canonicalization        relaxed/simple
+Canonicalization        relaxed/relaxed
 Mode                    s
 SubDomains              no
 

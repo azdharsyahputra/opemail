@@ -42,7 +42,7 @@ SyslogSuccess           Yes
 LogWhy                  Yes
 RequireSafeKeys         No
 
-Canonicalization        relaxed/simple
+Canonicalization        relaxed/relaxed
 Mode                    sv
 SubDomains              yes
 
