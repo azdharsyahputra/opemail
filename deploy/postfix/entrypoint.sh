@@ -23,7 +23,8 @@ postconf -e "smtp_tls_security_level=may" \
             "smtp_tls_protocols=>=TLSv1.2" \
             "smtp_tls_ciphers=medium" \
             "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt" \
-            "smtp_tls_CApath=/etc/ssl/certs" 2>/dev/null || true
+            "smtp_tls_CApath=/etc/ssl/certs" \
+            "mynetworks=127.0.0.0/8 [::1]/128 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16" 2>/dev/null || true
 
 # Prepare opendkim runtime directories & socket path
 mkdir -p /var/run/opendkim /var/spool/postfix/private /etc/opendkim
