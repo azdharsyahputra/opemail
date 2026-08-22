@@ -76,10 +76,32 @@ func (c *Checker) Ready(ctx context.Context) HealthResponse {
 		}
 	}
 
-	// 2. Postfix ports :25 & :587
-	checkTCP := func(name, addr string) {
+	// 2. Postfix ports :25 & :587, Dovecot ports :143 & :993
+	postfixHost := os.Getenv("POSTFIX_HOST")
+	if postfixHost == "" {
+		postfixHost = "postfix"
+	}
+	dovecotHost := os.Getenv("DOVECOT_HOST")
+	if dovecotHost == "" {
+		dovecotHost = "dovecot"
+	}
+
+	checkTCP := func(name, host, port string) {
+		addr := net.JoinHostPort(host, port)
 		conn, err := net.DialTimeout("tcp", addr, 1*time.Second)
 		if err != nil {
+			// Fallback to 127.0.0.1 for local host execution
+			if host != "127.0.0.1" && host != "localhost" {
+				if connLocal, errLocal := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", port), 1*time.Second); errLocal == nil {
+					_ = connLocal.Close()
+					resp.Checks = append(resp.Checks, CheckResult{
+						Component: name,
+						Status:    "UP",
+						Message:   "Listening",
+					})
+					return
+				}
+			}
 			resp.Status = "DEGRADED"
 			resp.Checks = append(resp.Checks, CheckResult{
 				Component: name,
@@ -96,10 +118,10 @@ func (c *Checker) Ready(ctx context.Context) HealthResponse {
 		}
 	}
 
-	checkTCP("postfix_25", "127.0.0.1:25")
-	checkTCP("postfix_587", "127.0.0.1:587")
-	checkTCP("dovecot_143", "127.0.0.1:143")
-	checkTCP("dovecot_993", "127.0.0.1:993")
+	checkTCP("postfix_25", postfixHost, "25")
+	checkTCP("postfix_587", postfixHost, "587")
+	checkTCP("dovecot_143", dovecotHost, "143")
+	checkTCP("dovecot_993", dovecotHost, "993")
 
 	// 3. Storage filesystem
 	if c.VmailDir != "" {
