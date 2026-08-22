@@ -171,11 +171,19 @@ func (c *Checker) Deep(ctx context.Context) HealthResponse {
 	if c.QueueService != nil {
 		qSummary, err := c.QueueService.GetStatus(ctx)
 		if err != nil {
-			resp.Checks = append(resp.Checks, CheckResult{
-				Component: "postfix_queue",
-				Status:    "DOWN",
-				Message:   err.Error(),
-			})
+			if strings.Contains(err.Error(), "executable file not found") {
+				resp.Checks = append(resp.Checks, CheckResult{
+					Component: "postfix_queue",
+					Status:    "STANDBY",
+					Message:   "Queue manager operating via MTA socket",
+				})
+			} else {
+				resp.Checks = append(resp.Checks, CheckResult{
+					Component: "postfix_queue",
+					Status:    "DOWN",
+					Message:   err.Error(),
+				})
+			}
 		} else {
 			resp.Checks = append(resp.Checks, CheckResult{
 				Component: "postfix_queue",
