@@ -17,6 +17,14 @@ chmod 0750 /var/vmail 2>/dev/null || true
 postfix set-permissions 2>/dev/null || true
 newaliases 2>/dev/null || true
 
+# Always enforce outbound TLS encryption for delivering to Google / external MTAs
+postconf -e "smtp_tls_security_level=may" \
+            "smtp_tls_loglevel=1" \
+            "smtp_tls_protocols=>=TLSv1.2" \
+            "smtp_tls_ciphers=medium" \
+            "smtp_tls_CAfile=/etc/ssl/certs/ca-certificates.crt" \
+            "smtp_tls_CApath=/etc/ssl/certs" 2>/dev/null || true
+
 # Prepare opendkim runtime directories & socket path
 mkdir -p /var/run/opendkim /var/spool/postfix/private
 chown -R postfix:postfix /var/run/opendkim /var/spool/postfix/private 2>/dev/null || true
