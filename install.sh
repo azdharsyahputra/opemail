@@ -40,12 +40,13 @@ prompt_read() {
     local var_name="$2"
     local default_val="$3"
 
-    if [ -t 0 ]; then
-        read -r -p "$prompt_msg" input_val
-    elif [ -e /dev/tty ]; then
-        read -r -p "$prompt_msg" input_val </dev/tty
+    local input_val=""
+    if [ -e /dev/tty ]; then
+        printf "%b" "$prompt_msg" > /dev/tty
+        read -r input_val < /dev/tty || true
     else
-        input_val=""
+        printf "%b" "$prompt_msg"
+        read -r input_val || true
     fi
 
     if [ -z "$input_val" ]; then
@@ -110,19 +111,12 @@ check_prerequisites() {
 # Pre-flight Check: Docker & Compose
 check_docker() {
     if ! command -v docker >/dev/null 2>&1; then
-        warn "Docker is not installed on this system."
+        info "Docker is not detected. Automatically installing official Docker engine..."
         if [ "$MACHINE" = "Linux" ]; then
-            prompt_read "Would you like to automatically install Docker now? (Y/n): " install_docker "Y"
-            if [[ "$install_docker" =~ ^[Yy]$ ]]; then
-                info "Installing Docker via official get.docker.com script..."
-                curl -fsSL https://get.docker.com | sh
-                systemctl start docker || true
-                systemctl enable docker || true
-                success "Docker installed successfully!"
-            else
-                error "Docker is required to run OpenMail. Please install Docker first."
-                exit 1
-            fi
+            curl -fsSL https://get.docker.com | sh
+            systemctl start docker || true
+            systemctl enable docker || true
+            success "Docker installed successfully!"
         else
             error "Docker Desktop is required on macOS. Please install and start Docker Desktop."
             exit 1
@@ -130,12 +124,20 @@ check_docker() {
     fi
 
     if ! docker compose version >/dev/null 2>&1; then
-        error "Docker Compose v2 is required ('docker compose'). Please update Docker."
-        exit 1
+        info "Installing Docker Compose plugin..."
+        if [ "$MACHINE" = "Linux" ]; then
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update -qq && apt-get install -y -qq docker-compose-plugin || true
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y docker-compose-plugin || true
+            elif command -v yum >/dev/null 2>&1; then
+                yum install -y docker-compose-plugin || true
+            fi
+        fi
     fi
 
     if ! docker info >/dev/null 2>&1; then
-        error "Docker daemon is not running or current user lacks permission (run with sudo or start Docker)."
+        error "Docker daemon is not running. Please start Docker service: sudo systemctl start docker"
         exit 1
     fi
     success "Docker & Docker Compose detected and running."
@@ -148,9 +150,11 @@ check_ports() {
     for p in "${ports[@]}"; do
         if command -v lsof >/dev/null 2>&1; then
             if lsof -Pi :"$p" -sTCP:LISTEN -t >/dev/null 2>&1; then
-                warn "Port $p is currently in use by another process."
+                warn "Port $p is currently in use by another process on the host."
                 if [ "$p" -eq 25 ] && [ "$MACHINE" = "Linux" ]; then
-                    warn "Host Postfix/Exim might be running. You can disable them via: sudo systemctl stop postfix exim4"
+                    info "Disabling conflicting host mail services (postfix/exim4)..."
+                    systemctl stop postfix exim4 2>/dev/null || true
+                    systemctl disable postfix exim4 2>/dev/null || true
                 fi
             fi
         fi
@@ -159,7 +163,6 @@ check_ports() {
 
 # Setup installation directory & clone codebase
 setup_codebase() {
-    # If not running inside the repository directory already
     if [ ! -f "docker-compose.yml" ] || [ ! -f "Dockerfile" ]; then
         info "Setting up installation directory at ${INSTALL_DIR}..."
         mkdir -p "${INSTALL_DIR}"
