@@ -85,6 +85,10 @@ func (h *MailboxHandler) Create(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, err.Error(), nil)
 			return
 		}
+		if err == mailbox.ErrDomainNotFound {
+			response.Error(w, r, http.StatusBadRequest, response.ErrCodeNotFound, "virtual domain for this email address is not registered. Please create the domain in 'Domains & DNS' first", nil)
+			return
+		}
 		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to create mailbox", err.Error())
 		return
 	}
