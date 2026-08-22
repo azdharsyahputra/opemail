@@ -656,13 +656,22 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 	allRecipients = append(allRecipients, req.Bcc...)
 
 	mtaAddr := fmt.Sprintf("%s:%d", s.mtaHost, s.mtaPort)
-	if err := sendRawSMTP(mtaAddr, fromEmail, allRecipients, rawBytes); err != nil {
-		// Fallback to localhost:25 or postfix:25
-		if err2 := sendRawSMTP("postfix:25", fromEmail, allRecipients, rawBytes); err2 != nil {
-			if err3 := sendRawSMTP("127.0.0.1:25", fromEmail, allRecipients, rawBytes); err3 != nil {
-				return nil, fmt.Errorf("failed to submit email to Postfix MTA: %w", err)
-			}
+	var lastErr error
+	delivered := false
+	targets := []string{mtaAddr, "postfix:25", "127.0.0.1:25", "localhost:25"}
+	for _, target := range targets {
+		if err := sendRawSMTP(target, fromEmail, allRecipients, rawBytes); err == nil {
+			delivered = true
+			break
+		} else {
+			lastErr = err
 		}
+	}
+	if !delivered {
+		if s.logger != nil {
+			s.logger.Error("failed to submit email to Postfix MTA", "from", fromEmail, "to", allRecipients, "error", lastErr)
+		}
+		return nil, fmt.Errorf("failed to submit email to Postfix MTA: %w", lastErr)
 	}
 
 	// 2. Save a copy into .Sent folder of sender
@@ -757,32 +766,42 @@ func (s *MaildirService) GetAttachment(ctx context.Context, email, folder, messa
 func sendRawSMTP(addr, from string, recipients []string, body []byte) error {
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial %s: %w", addr, err)
 	}
 	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, "localhost")
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		host = "localhost"
+	}
+
+	client, err := smtp.NewClient(conn, host)
 	if err != nil {
-		return err
+		return fmt.Errorf("smtp client init %s: %w", addr, err)
 	}
 	defer client.Close()
 
+	_ = client.Hello("mailopen.local")
+
 	if err := client.Mail(from); err != nil {
-		return err
+		return fmt.Errorf("MAIL FROM <%s> on %s: %w", from, addr, err)
 	}
 	for _, rcpt := range recipients {
 		if err := client.Rcpt(rcpt); err != nil {
-			return err
+			return fmt.Errorf("RCPT TO <%s> on %s: %w", rcpt, addr, err)
 		}
 	}
 	w, err := client.Data()
 	if err != nil {
-		return err
+		return fmt.Errorf("DATA on %s: %w", addr, err)
 	}
 	if _, err := w.Write(body); err != nil {
-		return err
+		return fmt.Errorf("write DATA on %s: %w", addr, err)
 	}
-	return w.Close()
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close DATA on %s: %w", addr, err)
+	}
+	return client.Quit()
 }
 
 func parseMIMEBody(msg *mail.Message) (string, string, []Attachment) {
