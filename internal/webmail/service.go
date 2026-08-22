@@ -513,17 +513,39 @@ func (s *MaildirService) DeleteMessage(ctx context.Context, email, folder, messa
 }
 
 func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req SendMessageRequest) (*MessageSummary, error) {
-	if len(req.To) == 0 {
-		return nil, fmt.Errorf("at least one recipient is required in 'to'")
+	cleanFrom := cleanEmailAddress(fromEmail)
+	if cleanFrom == "" {
+		return nil, fmt.Errorf("sender email address is invalid or empty")
+	}
+
+	var cleanRecipients []string
+	for _, to := range req.To {
+		if c := cleanEmailAddress(to); c != "" {
+			cleanRecipients = append(cleanRecipients, c)
+		}
+	}
+	for _, cc := range req.Cc {
+		if c := cleanEmailAddress(cc); c != "" {
+			cleanRecipients = append(cleanRecipients, c)
+		}
+	}
+	for _, bcc := range req.Bcc {
+		if c := cleanEmailAddress(bcc); c != "" {
+			cleanRecipients = append(cleanRecipients, c)
+		}
+	}
+
+	if len(cleanRecipients) == 0 {
+		return nil, fmt.Errorf("at least one valid recipient is required in 'to'")
 	}
 
 	// Build MIME message
 	var buf bytes.Buffer
 	boundary := fmt.Sprintf("=_OpenMail_%d_%s", time.Now().UnixNano(), randString(8))
-	msgID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randString(12), getDomainFromEmail(fromEmail))
+	msgID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randString(12), getDomainFromEmail(cleanFrom))
 
 	headers := make(map[string]string)
-	headers["From"] = fromEmail
+	headers["From"] = cleanFrom
 	headers["To"] = strings.Join(req.To, ", ")
 	if len(req.Cc) > 0 {
 		headers["Cc"] = strings.Join(req.Cc, ", ")
@@ -652,16 +674,19 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 	rawBytes := buf.Bytes()
 
 	// 1. Deliver to local Postfix MTA
-	allRecipients := append(append([]string{}, req.To...), req.Cc...)
-	allRecipients = append(allRecipients, req.Bcc...)
-
 	mtaAddr := fmt.Sprintf("%s:%d", s.mtaHost, s.mtaPort)
+	targets := []string{"postfix:25", mtaAddr, "127.0.0.1:25", "localhost:25"}
 	var lastErr error
 	delivered := false
-	targets := []string{mtaAddr, "postfix:25", "127.0.0.1:25", "localhost:25"}
 	for _, target := range targets {
-		if err := sendRawSMTP(target, fromEmail, allRecipients, rawBytes); err == nil {
+		if target == "" || target == ":0" {
+			continue
+		}
+		if err := sendRawSMTP(target, cleanFrom, cleanRecipients, rawBytes); err == nil {
 			delivered = true
+			if s.logger != nil {
+				s.logger.Info("email submitted successfully to MTA", "target", target, "from", cleanFrom, "recipients", cleanRecipients)
+			}
 			break
 		} else {
 			lastErr = err
@@ -669,13 +694,13 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 	}
 	if !delivered {
 		if s.logger != nil {
-			s.logger.Error("failed to submit email to Postfix MTA", "from", fromEmail, "to", allRecipients, "error", lastErr)
+			s.logger.Error("failed to submit email to Postfix MTA", "from", cleanFrom, "to", cleanRecipients, "error", lastErr)
 		}
 		return nil, fmt.Errorf("failed to submit email to Postfix MTA: %w", lastErr)
 	}
 
 	// 2. Save a copy into .Sent folder of sender
-	maildirPath, err := s.getMaildirPath(fromEmail)
+	maildirPath, err := s.getMaildirPath(cleanFrom)
 	if err == nil {
 		sentCur := filepath.Join(maildirPath, ".Sent", "cur")
 		_ = os.MkdirAll(sentCur, 0750)
@@ -687,7 +712,7 @@ func (s *MaildirService) SendMessage(ctx context.Context, fromEmail string, req 
 		ID:        msgID,
 		Folder:    "sent",
 		MessageID: msgID,
-		From:      fromEmail,
+		From:      cleanFrom,
 		To:        req.To,
 		Subject:   req.Subject,
 		Date:      time.Now(),
@@ -1048,4 +1073,17 @@ func getDomainFromEmail(email string) string {
 		return parts[1]
 	}
 	return "localhost"
+}
+
+func cleanEmailAddress(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if addr, err := mail.ParseAddress(raw); err == nil && addr.Address != "" {
+		return addr.Address
+	}
+	raw = strings.TrimPrefix(raw, "<")
+	raw = strings.TrimSuffix(raw, ">")
+	return strings.TrimSpace(raw)
 }
