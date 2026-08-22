@@ -72,9 +72,33 @@ func (s *MaildirService) getFolderDir(maildirPath, folder string) (string, error
 		return maildirPath, nil
 	}
 
+	// Map common standard folder IDs to Dovecot Maildir++ naming
+	switch strings.ToLower(folder) {
+	case "sent", ".sent":
+		return filepath.Join(maildirPath, ".Sent"), nil
+	case "drafts", "draft", ".drafts", ".draft":
+		return filepath.Join(maildirPath, ".Drafts"), nil
+	case "trash", ".trash":
+		return filepath.Join(maildirPath, ".Trash"), nil
+	case "junk", "spam", ".junk", ".spam":
+		return filepath.Join(maildirPath, ".Junk"), nil
+	case "archive", ".archive":
+		return filepath.Join(maildirPath, ".Archive"), nil
+	}
+
 	folderName := folder
 	if !strings.HasPrefix(folderName, ".") {
 		folderName = "." + folderName
+	}
+
+	// Case-insensitive lookup if directory already exists
+	entries, err := os.ReadDir(maildirPath)
+	if err == nil {
+		for _, e := range entries {
+			if e.IsDir() && strings.EqualFold(e.Name(), folderName) {
+				return filepath.Join(maildirPath, e.Name()), nil
+			}
+		}
 	}
 
 	// Prevent directory traversal
