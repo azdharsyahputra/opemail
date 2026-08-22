@@ -21,6 +21,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/queue"
 	"github.com/azdharsyahputra/openmail/internal/quota"
+	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,7 @@ var serverCmd = &cobra.Command{
 		tokenRepo := token.NewPostgresRepository(db)
 		auditRepo := audit.NewPostgresRepository(db)
 		dkimRepo := dkim.NewPostgresRepository(db)
+		settingRepo := system.NewPostgresSettingRepository(db)
 
 		// Services
 		prov, _ := provisioning.NewFilesystemProvisioner(cfg.VmailDir, cfg.VmailUID, cfg.VmailGID)
@@ -98,6 +100,7 @@ var serverCmd = &cobra.Command{
 			TLSService:      tlsSvc,
 			QueueService:    qSvc,
 			AuditService:    auditSvc,
+			SettingRepo:     settingRepo,
 			HealthHandler:   healthHandler,
 			MetricsRegistry: metrics.DefaultRegistry,
 		})

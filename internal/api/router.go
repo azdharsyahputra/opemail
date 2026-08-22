@@ -16,6 +16,7 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/metrics"
 	"github.com/azdharsyahputra/openmail/internal/queue"
 	"github.com/azdharsyahputra/openmail/internal/quota"
+	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	"github.com/go-chi/chi/v5"
 )
@@ -35,6 +36,7 @@ type RouterDependencies struct {
 	QueueService    queue.Service
 	QuotaService    quota.Service
 	AuditService    audit.Service
+	SettingRepo     system.SettingRepository
 	HealthHandler   *handler.HealthHandler
 	MetricsRegistry *metrics.Registry
 }
@@ -157,6 +159,13 @@ func NewRouter(deps RouterDependencies) http.Handler {
 
 		// Audit
 		apiGroup.With(middleware.RequireRole("admin", "auditor")).Get("/api/v1/audit", auditH.List)
+
+		// System Configurations
+		configH := handler.NewConfigHandler(deps.SettingRepo, deps.AuditService)
+		apiGroup.Route("/api/v1/config", func(cr chi.Router) {
+			cr.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/", configH.Get)
+			cr.With(middleware.RequireRole("admin")).Put("/", configH.Update)
+		})
 
 		// System
 		apiGroup.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/api/v1/system/status", deps.HealthHandler.Ready)
