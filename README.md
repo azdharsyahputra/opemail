@@ -1,11 +1,11 @@
-# openmail
+# OpenMail
 
-`openmail` is a modular, high-performance mail server management and control plane CLI built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening, Inbound Security, Spam/Antivirus filtering, Outbound submission rate limits, Postfix Mail Queue management, Bounce classification, Message Lifecycle Events, Quota reconciliation, Structured JSON logging, Prometheus metrics, Health probes, and Disaster Recovery encrypted backup/restore.
+`openmail` is a modular, high-performance, autonomous mail server management and control plane built in Go, backed by PostgreSQL, Postfix inbound MTA (:25) & submission (:587), OpenDKIM milter signing, Dovecot SASL authentication, Dovecot IMAP (:143) / IMAPS (:993) with TLS/STARTTLS hardening, Inbound Security, Built-in Webmail & Admin Panel, Postfix Mail Queue management, Bounce classification, Message Lifecycle Events, Quota reconciliation, Structured JSON logging, Prometheus metrics, Health probes, and Disaster Recovery encrypted backup/restore.
 
 ## Architecture
 
 ```text
-                                MailOpen Control Plane
+                                OpenMail Control Plane
                                           │
         ┌───────────────────┬─────────────┴─────────────┬───────────────────┐
         │                   │                           │                   │
@@ -24,21 +24,20 @@ Client Configuration:
 - **IMAP Secure**: `mail.example.com:993` | Security: `SSL/TLS` (IMAPS) | Auth: `Required`
 - **IMAP Legacy/Compatible**: `mail.example.com:143` | Security: `STARTTLS` | Plaintext Auth: `BLOCKED`
 
-See [docs/architecture.md](docs/architecture.md), [docs/deliverability.md](docs/deliverability.md), and [task.md](task.md) for full architectural details.
+See [docs/architecture.md](docs/architecture.md) and [docs/deliverability.md](docs/deliverability.md) for architectural details.
 
 ## Quick Start & Installation
 
-### 🚀 1-Line Automated Production Installer (Recommended)
-Run this command on any fresh Ubuntu/Debian/Rocky Linux or macOS server:
+### 🚀 1-Line Automated Production Deployment (Pre-built GHCR Images)
+Run OpenMail instantly without compiling source code:
 ```bash
-curl -sSL https://raw.githubusercontent.com/azdharsyahputra/openmail/main/install.sh | bash
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-The installer automatically checks prerequisites, configures secure secrets, provisions PostgreSQL, deploys Postfix/Dovecot/Control Plane, applies database migrations, and boots the Web UI.
-
----
-
-### Manual Docker Compose Quick Start
+To update to the latest releases at any time:
+```bash
+docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+```
 
 ### 1. Start Database & Mail Services Stack
 ```bash

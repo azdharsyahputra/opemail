@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  MailOpen - Autonomous Self-Hosted Mail Server Control Plane
+#  OpenMail - Autonomous Self-Hosted Mail Server Control Plane
 #  One-Line Interactive & Automated Production Installer
 #  Repository: https://github.com/azdharsyahputra/opemail
 # ==============================================================================
@@ -70,7 +70,7 @@ banner() {
                          |_|               
 BANNER
     printf "${NC}"
-    echo -e "${BOLD}MailOpen Automated Production Installer${NC}"
+    echo -e "${BOLD}OpenMail Automated Production Installer${NC}"
     echo "Standard-compliant, Zero-Trust Enterprise Mail Engine"
     echo "======================================================="
     echo ""

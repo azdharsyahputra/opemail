@@ -1,6 +1,6 @@
-# MailOpen v0.9.0 Release Notes
+# OpenMail v0.9.0 Release Notes
 
-MailOpen is a modern, modular, production-grade Mail Server Control Plane and Engine built in Go.
+OpenMail is a modern, modular, production-grade Mail Server Control Plane and Engine built in Go.
 
 ## Release Highlights
 - **100% Tested Verification Plan**: Over 300 automated testcases across 5 verification levels (Unit, Integration, Protocol, Security & Abuse, Disaster Recovery & Concurrency).
