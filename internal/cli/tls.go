@@ -184,7 +184,7 @@ var tlsDoctorCmd = &cobra.Command{
 		provider := tls.NewFilesystemProvider(cfg.TLSBaseDir)
 		report := tls.RunDoctor(cmd.Context(), provider, hostname, cfg.PostfixConfigDir, cfg.DovecotConfigDir)
 
-		fmt.Println("MailOpen TLS Doctor")
+		fmt.Println("OpenMail TLS Doctor")
 		fmt.Println("══════════════════════════════════")
 		fmt.Printf("Target Hostname: %s\n\n", hostname)
 

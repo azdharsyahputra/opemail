@@ -30,7 +30,7 @@ import (
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
-	Short: "Start the MailOpen REST API Control Plane HTTP server",
+	Short: "Start the OpenMail REST API Control Plane HTTP server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		addr, _ := cmd.Flags().GetString("addr")
 		cfg, err := config.Load()
@@ -110,7 +110,7 @@ var serverCmd = &cobra.Command{
 
 
 		srv := api.NewServer(addr, router)
-		fmt.Printf("MailOpen REST API Control Plane listening on %s\n", addr)
+		fmt.Printf("OpenMail REST API Control Plane listening on %s\n", addr)
 		return srv.Start()
 	},
 }

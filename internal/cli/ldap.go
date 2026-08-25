@@ -33,7 +33,7 @@ var ldapDoctorCmd = &cobra.Command{
 		}
 
 		fmt.Println("========================================")
-		fmt.Println("         MailOpen LDAP Doctor           ")
+		fmt.Println("         OpenMail LDAP Doctor           ")
 		fmt.Println("========================================")
 		fmt.Printf("Provider:                  %s\n", report.ProviderName)
 		fmt.Printf("Configuration:             %s\n", formatCheck(report.ConfigOK))
@@ -62,7 +62,7 @@ func formatCheck(ok bool) string {
 
 var ldapSyncCmd = &cobra.Command{
 	Use:   "sync",
-	Short: "Synchronize LDAP users into MailOpen virtual mailboxes",
+	Short: "Synchronize LDAP users into OpenMail virtual mailboxes",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		domName, _ := cmd.Flags().GetString("domain")
 		autoCreate, _ := cmd.Flags().GetBool("auto-create")

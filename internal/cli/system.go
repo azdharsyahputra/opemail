@@ -15,7 +15,7 @@ var systemCmd = &cobra.Command{
 
 var systemDoctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Run comprehensive 10-category MailOpen system health diagnostics",
+	Short: "Run comprehensive 10-category OpenMail system health diagnostics",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		db, _ := getDB()
@@ -37,7 +37,7 @@ var systemDoctorCmd = &cobra.Command{
 
 		report := system.RunSystemDoctor(ctx, deps)
 
-		fmt.Println("\nMailOpen System Doctor")
+		fmt.Println("\nOpenMail System Doctor")
 		fmt.Println("══════════════════════════════════════")
 
 		categories := []string{"DATABASE", "MAIL TRANSPORT", "MAIL ACCESS", "SECURITY", "STORAGE", "OBSERVABILITY", "BACKUP", "QUEUE", "CERTIFICATES"}

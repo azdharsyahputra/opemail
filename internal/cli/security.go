@@ -13,9 +13,9 @@ var securityCmd = &cobra.Command{
 
 var securityDoctorCmd = &cobra.Command{
 	Use:   "doctor",
-	Short: "Run MailOpen Security Doctor baseline audit with granular proof classification",
+	Short: "Run OpenMail Security Doctor baseline audit with granular proof classification",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("\nMailOpen Security Doctor (Verification Taxonomy: AUTOMATED / MANUAL / EXTERNAL)")
+		fmt.Println("\nOpenMail Security Doctor (Verification Taxonomy: AUTOMATED / MANUAL / EXTERNAL)")
 		fmt.Println("─────────────────────────────────────────────────────────────────────────────")
 
 		fmt.Println("\nIDENTITY (OpenLDAP & Local Identity)")

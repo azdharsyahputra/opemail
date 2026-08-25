@@ -25,7 +25,7 @@ var inboundDoctorCmd = &cobra.Command{
 
 		report := inbound.RunInboundDoctor(cmd.Context(), db, cfg.PostfixConfigDir)
 
-		fmt.Println("MailOpen Inbound Security Doctor")
+		fmt.Println("OpenMail Inbound Security Doctor")
 		fmt.Println("══════════════════════════════════")
 
 		for _, item := range report.Checks {

@@ -15,9 +15,9 @@ var (
 
 var uninstallCmd = &cobra.Command{
 	Use:   "uninstall",
-	Short: "Uninstall MailOpen software cleanly while preserving user data and database",
+	Short: "Uninstall OpenMail software cleanly while preserving user data and database",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("Uninstalling MailOpen software components...")
+		fmt.Println("Uninstalling OpenMail software components...")
 		fmt.Println("[INFO] Stopping subsystem background workers and cleaning temporary runtime sockets.")
 		fmt.Println("[INFO] Software removed. User Maildir storage and PostgreSQL database remain intact.")
 		return nil
@@ -26,16 +26,16 @@ var uninstallCmd = &cobra.Command{
 
 var purgeCmd = &cobra.Command{
 	Use:   "purge",
-	Short: "Purge MailOpen software and all associated data (DESTRUCTIVE)",
+	Short: "Purge OpenMail software and all associated data (DESTRUCTIVE)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !purgeAllData {
-			return fmt.Errorf("safety check: specify --all-data to confirm data purge, or use 'mailopen uninstall' to preserve user mail and database")
+			return fmt.Errorf("safety check: specify --all-data to confirm data purge, or use 'openmail uninstall' to preserve user mail and database")
 		}
 		if !purgeForce {
 			return fmt.Errorf("safety check: destructive purge requires --force flag to confirm removal of all emails, configs, keys, and database tables")
 		}
 
-		fmt.Println("PURGING MailOpen...")
+		fmt.Println("PURGING OpenMail...")
 		fmt.Println("[WARN] Destroying all local Maildir stores, TLS certificates, DKIM keys, and configuration files.")
 		return nil
 	},

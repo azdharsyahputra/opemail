@@ -203,7 +203,7 @@ var dkimDoctorCmd = &cobra.Command{
 
 		report := dkim.RunDKIMDoctor(cmd.Context(), dkimService, domainName, nil)
 
-		fmt.Println("MailOpen DKIM Doctor")
+		fmt.Println("OpenMail DKIM Doctor")
 		fmt.Println("══════════════════════════════════")
 		fmt.Printf("Target Domain: %s\n\n", domainName)
 
