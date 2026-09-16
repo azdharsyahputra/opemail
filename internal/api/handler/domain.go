@@ -16,28 +16,131 @@ import (
 
 	"github.com/azdharsyahputra/openmail/internal/dns"
 	"github.com/azdharsyahputra/openmail/internal/domain"
+	"github.com/azdharsyahputra/openmail/internal/smtpkey"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type DomainHandler struct {
-	domainService domain.Service
-	dkimService   dkim.Service
-	tlsService    *openmailtls.Service
-	auditService  audit.Service
+	domainService  domain.Service
+	dkimService    dkim.Service
+	smtpKeyService smtpkey.Service
+	tlsService     *openmailtls.Service
+	auditService   audit.Service
 }
 
-func NewDomainHandler(domSvc domain.Service, dkimSvc dkim.Service, tlsSvc *openmailtls.Service, auditSvc audit.Service) *DomainHandler {
+func NewDomainHandler(domSvc domain.Service, dkimSvc dkim.Service, smtpKeySvc smtpkey.Service, tlsSvc *openmailtls.Service, auditSvc audit.Service) *DomainHandler {
 	return &DomainHandler{
-		domainService: domSvc,
-		dkimService:   dkimSvc,
-		tlsService:    tlsSvc,
-		auditService:  auditSvc,
+		domainService:  domSvc,
+		dkimService:    dkimSvc,
+		smtpKeyService: smtpKeySvc,
+		tlsService:     tlsSvc,
+		auditService:   auditSvc,
 	}
 }
 
 type CreateDomainRequest struct {
 	Name string `json:"name"`
+}
+
+type CreateSMTPKeyRequest struct {
+	Name string `json:"name"`
+}
+
+func (h *DomainHandler) ListSMTPKeys(w http.ResponseWriter, r *http.Request) {
+	if h.smtpKeyService == nil {
+		response.Error(w, r, http.StatusNotImplemented, response.ErrCodeInternal, "smtp key service is not configured", nil)
+		return
+	}
+
+	keys, err := h.smtpKeyService.List(r.Context(), parseEmailParam(r, "domain"))
+	if err != nil {
+		if err == domain.ErrDomainNotFound {
+			response.Error(w, r, http.StatusNotFound, response.ErrCodeDomainNotFound, "domain not found", nil)
+			return
+		}
+		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to list smtp keys", err.Error())
+		return
+	}
+	response.JSON(w, http.StatusOK, keys)
+}
+
+func (h *DomainHandler) CreateSMTPKey(w http.ResponseWriter, r *http.Request) {
+	if h.smtpKeyService == nil {
+		response.Error(w, r, http.StatusNotImplemented, response.ErrCodeInternal, "smtp key service is not configured", nil)
+		return
+	}
+
+	var req CreateSMTPKeyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, "malformed request payload", err.Error())
+		return
+	}
+
+	domName := parseEmailParam(r, "domain")
+	issued, err := h.smtpKeyService.Create(r.Context(), domName, req.Name)
+	if err != nil {
+		switch err {
+		case domain.ErrDomainNotFound:
+			response.Error(w, r, http.StatusNotFound, response.ErrCodeDomainNotFound, "domain not found", nil)
+		case smtpkey.ErrKeyExists:
+			response.Error(w, r, http.StatusConflict, response.ErrCodeSMTPKeyExists, "smtp key name already exists for this domain", nil)
+		case smtpkey.ErrInvalidName:
+			response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, err.Error(), nil)
+		default:
+			response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to generate smtp key", err.Error())
+		}
+		return
+	}
+
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "smtp_key.create", "smtp_key", &issued.Key.ID, map[string]string{
+			"domain": domName,
+			"name":   issued.Key.Name,
+		})
+	}
+
+	response.JSON(w, http.StatusCreated, map[string]interface{}{
+		"key":             issued.Key,
+		"secret":          issued.Secret,
+		"smtp_host":       "mail." + domName,
+		"smtp_port":       587,
+		"smtp_security":   "STARTTLS",
+		"secret_one_time": true,
+	})
+}
+
+func (h *DomainHandler) RevokeSMTPKey(w http.ResponseWriter, r *http.Request) {
+	if h.smtpKeyService == nil {
+		response.Error(w, r, http.StatusNotImplemented, response.ErrCodeInternal, "smtp key service is not configured", nil)
+		return
+	}
+
+	domName := parseEmailParam(r, "domain")
+	keyID, err := uuid.Parse(chi.URLParam(r, "keyID"))
+	if err != nil {
+		response.Error(w, r, http.StatusBadRequest, response.ErrCodeValidationError, "invalid smtp key id", nil)
+		return
+	}
+
+	if err := h.smtpKeyService.Revoke(r.Context(), domName, keyID); err != nil {
+		if err == domain.ErrDomainNotFound {
+			response.Error(w, r, http.StatusNotFound, response.ErrCodeDomainNotFound, "domain not found", nil)
+			return
+		}
+		if err == smtpkey.ErrKeyNotFound {
+			response.Error(w, r, http.StatusNotFound, response.ErrCodeSMTPKeyNotFound, "smtp key not found or already revoked", nil)
+			return
+		}
+		response.Error(w, r, http.StatusInternalServerError, response.ErrCodeInternal, "failed to revoke smtp key", err.Error())
+		return
+	}
+
+	if h.auditService != nil {
+		_ = h.auditService.RecordAudit(r.Context(), "api", nil, "smtp_key.revoke", "smtp_key", &keyID, map[string]string{"domain": domName})
+	}
+	response.JSON(w, http.StatusOK, map[string]string{"message": "smtp key revoked successfully"})
 }
 
 func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +222,6 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "domain deleted successfully"})
 }
-
 
 func (h *DomainHandler) Doctor(w http.ResponseWriter, r *http.Request) {
 	domName := chi.URLParam(r, "domain")

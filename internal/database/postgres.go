@@ -27,7 +27,6 @@ func NewPostgresDB(databaseURL string) (*sql.DB, error) {
 	return db, nil
 }
 
-
 func RunMigrationsUp(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
@@ -79,6 +78,7 @@ func RunMigrationsDown(db *sql.DB) error {
 func DropAllTables(db *sql.DB) error {
 	_, err := db.Exec(`
 		DROP TABLE IF EXISTS messages CASCADE;
+		DROP TABLE IF EXISTS smtp_credentials CASCADE;
 		DROP TABLE IF EXISTS aliases CASCADE;
 		DROP TABLE IF EXISTS mailboxes CASCADE;
 		DROP TABLE IF EXISTS domains CASCADE;
@@ -86,4 +86,3 @@ func DropAllTables(db *sql.DB) error {
 	`)
 	return err
 }
-

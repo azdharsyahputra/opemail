@@ -32,10 +32,10 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/queue"
 	"github.com/azdharsyahputra/openmail/internal/quota"
+	"github.com/azdharsyahputra/openmail/internal/smtpkey"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	goldap "github.com/go-ldap/ldap/v3"
 )
-
 
 type apiTestRig struct {
 	db         *sql.DB
@@ -80,6 +80,7 @@ func setupAPITestRig(t *testing.T) *apiTestRig {
 	tokenRepo := token.NewPostgresRepository(db)
 	auditRepo := audit.NewPostgresRepository(db)
 	dkimRepo := dkim.NewPostgresRepository(db)
+	smtpKeyRepo := smtpkey.NewPostgresRepository(db)
 
 	prov, _ := provisioning.NewFilesystemProvisioner(tempVmail, os.Getuid(), os.Getgid())
 	mbSvc := mailbox.NewService(mbRepo, domRepo, prov)
@@ -91,6 +92,7 @@ func setupAPITestRig(t *testing.T) *apiTestRig {
 
 	keystore := dkim.NewFilesystemKeystore(tempDKIM)
 	dkimSvc := dkim.NewService(dkimRepo, domRepo, keystore)
+	smtpKeySvc := smtpkey.NewService(smtpKeyRepo, domSvc)
 	tlsProv := openmailtls.NewFilesystemProvider(tempTLS)
 	tlsSvc := openmailtls.NewService(tlsProv)
 
@@ -132,13 +134,13 @@ func setupAPITestRig(t *testing.T) *apiTestRig {
 		MailboxRepo:     mbRepo,
 		DomainRepo:      domRepo,
 		DKIMService:     dkimSvc,
+		SMTPKeyService:  smtpKeySvc,
 		TLSService:      tlsSvc,
 		QueueService:    qSvc,
 		AuditService:    auditSvc,
 		HealthHandler:   healthH,
 		MetricsRegistry: metrics.DefaultRegistry,
 	})
-
 
 	ts := httptest.NewServer(router)
 
@@ -332,7 +334,6 @@ func TestREST_API_Authentication(t *testing.T) {
 		_ = rig.mbSvc.Resume(ctx, mb.ID)
 	})
 
-
 	t.Run("AUTH-API-007 & 008: Refresh Token Rotation and Replay Protection", func(t *testing.T) {
 		// Login
 		_, body, _ := rig.doRequest("POST", "/api/v1/auth/login", "", map[string]string{
@@ -492,6 +493,35 @@ func TestREST_API_DomainAndMailbox(t *testing.T) {
 		respDNS, _, _ := rig.doRequest("GET", "/api/v1/domains/"+domName+"/dns", rig.adminToken, nil)
 		if respDNS.StatusCode != http.StatusOK {
 			t.Errorf("domain dns failed: %d", respDNS.StatusCode)
+		}
+
+		// 6. Domain SMTP key lifecycle. The raw secret must only be returned on creation.
+		respSMTP, smtpBody, err := rig.doRequest("POST", "/api/v1/domains/"+domName+"/smtp-keys", rig.adminToken, map[string]string{"name": "go-otp"})
+		if err != nil || respSMTP.StatusCode != http.StatusCreated {
+			t.Fatalf("create smtp key failed: %d, body: %s", respSMTP.StatusCode, string(smtpBody))
+		}
+		var issued struct {
+			Key struct {
+				ID       string `json:"id"`
+				Username string `json:"username"`
+			} `json:"key"`
+			Secret string `json:"secret"`
+		}
+		if err := json.Unmarshal(smtpBody, &issued); err != nil || issued.Key.ID == "" || issued.Key.Username == "" || issued.Secret == "" {
+			t.Fatalf("smtp key response did not include one-time credentials: %s", string(smtpBody))
+		}
+
+		respSMTPList, smtpListBody, _ := rig.doRequest("GET", "/api/v1/domains/"+domName+"/smtp-keys", rig.adminToken, nil)
+		if respSMTPList.StatusCode != http.StatusOK || !strings.Contains(string(smtpListBody), issued.Key.Username) {
+			t.Errorf("list smtp keys failed: %d, body: %s", respSMTPList.StatusCode, string(smtpListBody))
+		}
+		if strings.Contains(string(smtpListBody), issued.Secret) {
+			t.Errorf("list smtp keys leaked the one-time secret")
+		}
+
+		respRevoke, _, _ := rig.doRequest("POST", fmt.Sprintf("/api/v1/domains/%s/smtp-keys/%s/revoke", domName, issued.Key.ID), rig.adminToken, nil)
+		if respRevoke.StatusCode != http.StatusOK {
+			t.Errorf("revoke smtp key failed: %d", respRevoke.StatusCode)
 		}
 	})
 

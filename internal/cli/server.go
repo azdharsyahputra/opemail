@@ -21,12 +21,12 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/provisioning"
 	"github.com/azdharsyahputra/openmail/internal/queue"
 	"github.com/azdharsyahputra/openmail/internal/quota"
+	"github.com/azdharsyahputra/openmail/internal/smtpkey"
 	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	"github.com/azdharsyahputra/openmail/internal/webmail"
 	"github.com/spf13/cobra"
 )
-
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
@@ -53,6 +53,7 @@ var serverCmd = &cobra.Command{
 		tokenRepo := token.NewPostgresRepository(db)
 		auditRepo := audit.NewPostgresRepository(db)
 		dkimRepo := dkim.NewPostgresRepository(db)
+		smtpKeyRepo := smtpkey.NewPostgresRepository(db)
 		settingRepo := system.NewPostgresSettingRepository(db)
 
 		// Services
@@ -66,6 +67,7 @@ var serverCmd = &cobra.Command{
 
 		keystore := dkim.NewFilesystemKeystore(cfg.DKIMBaseDir)
 		dkimSvc := dkim.NewService(dkimRepo, domRepo, keystore)
+		smtpKeySvc := smtpkey.NewService(smtpKeyRepo, domSvc)
 		tlsProv := openmailtls.NewFilesystemProvider(cfg.TLSBaseDir)
 		tlsSvc := openmailtls.NewService(tlsProv)
 
@@ -99,6 +101,7 @@ var serverCmd = &cobra.Command{
 			MailboxRepo:     mbRepo,
 			DomainRepo:      domRepo,
 			DKIMService:     dkimSvc,
+			SMTPKeyService:  smtpKeySvc,
 			TLSService:      tlsSvc,
 			QueueService:    qSvc,
 			AuditService:    auditSvc,
@@ -107,7 +110,6 @@ var serverCmd = &cobra.Command{
 			MetricsRegistry: metrics.DefaultRegistry,
 			WebmailService:  webmailSvc,
 		})
-
 
 		srv := api.NewServer(addr, router)
 		fmt.Printf("OpenMail REST API Control Plane listening on %s\n", addr)

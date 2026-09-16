@@ -110,8 +110,11 @@ func TestDovecotConfigGeneration(t *testing.T) {
 		if !strings.Contains(configs.PgSQLConf, "default_pass_scheme = ARGON2ID") {
 			t.Error("dovecot-pgsql missing default_pass_scheme = ARGON2ID")
 		}
-		if !strings.Contains(configs.PgSQLConf, "password_query = SELECT email AS username, password_hash AS password") {
-			t.Error("dovecot-pgsql missing password_query")
+		if !strings.Contains(configs.PgSQLConf, "password_query = SELECT username, secret_hash AS password FROM smtp_credentials") {
+			t.Error("dovecot-pgsql missing smtp key password_query")
+		}
+		if !strings.Contains(configs.PgSQLConf, "SELECT email AS username, password_hash AS password FROM mailboxes") {
+			t.Error("dovecot-pgsql missing mailbox password_query fallback")
 		}
 		if !strings.Contains(configs.PgSQLConf, "user_query = SELECT 5000 AS uid, 5000 AS gid, '/var/vmail/%d/%n/Maildir' AS home") {
 			t.Error("dovecot-pgsql missing user_query")

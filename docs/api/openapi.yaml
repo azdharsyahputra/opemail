@@ -146,6 +146,74 @@ paths:
         '200':
           description: Domain deleted
 
+  /api/v1/domains/{domain}/smtp-keys:
+    get:
+      summary: List domain-scoped SMTP AUTH keys
+      description: Returns metadata only. Raw secrets are never returned from list operations.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SMTP key metadata
+        '404':
+          description: Domain not found
+    post:
+      summary: Generate a domain-scoped SMTP AUTH key
+      description: The generated secret is returned exactly once in the response.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 64
+                  example: go-otp
+      responses:
+        '201':
+          description: SMTP key generated; secret is one-time
+        '409':
+          description: Key name already exists for the domain
+
+  /api/v1/domains/{domain}/smtp-keys/{keyID}/revoke:
+    post:
+      summary: Revoke a domain SMTP AUTH key
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: domain
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: keyID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SMTP key revoked
+        '404':
+          description: Domain or SMTP key not found
+
   /api/v1/mailboxes:
     get:
       summary: List all virtual mailboxes

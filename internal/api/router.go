@@ -16,12 +16,12 @@ import (
 	"github.com/azdharsyahputra/openmail/internal/metrics"
 	"github.com/azdharsyahputra/openmail/internal/queue"
 	"github.com/azdharsyahputra/openmail/internal/quota"
+	"github.com/azdharsyahputra/openmail/internal/smtpkey"
 	"github.com/azdharsyahputra/openmail/internal/system"
 	openmailtls "github.com/azdharsyahputra/openmail/internal/tls"
 	"github.com/azdharsyahputra/openmail/internal/webmail"
 	"github.com/go-chi/chi/v5"
 )
-
 
 type RouterDependencies struct {
 	Logger          *slog.Logger
@@ -33,6 +33,7 @@ type RouterDependencies struct {
 	MailboxRepo     mailbox.Repository
 	DomainRepo      domain.Repository
 	DKIMService     dkim.Service
+	SMTPKeyService  smtpkey.Service
 	TLSService      *openmailtls.Service
 	QueueService    queue.Service
 	QuotaService    quota.Service
@@ -54,11 +55,9 @@ func NewRouter(deps RouterDependencies) http.Handler {
 	r.Use(middleware.BodyLimit(1 << 20)) // 1MB payload limit
 	r.Use(middleware.NewRateLimiter(200, time.Minute))
 
-
-
 	// Instantiate Handlers
 	authH := handler.NewAuthHandler(deps.IdentityService, deps.TokenManager)
-	domH := handler.NewDomainHandler(deps.DomainService, deps.DKIMService, deps.TLSService, deps.AuditService)
+	domH := handler.NewDomainHandler(deps.DomainService, deps.DKIMService, deps.SMTPKeyService, deps.TLSService, deps.AuditService)
 	mbH := handler.NewMailboxHandler(deps.MailboxService, deps.AuditService)
 	quotaH := handler.NewQuotaHandler(deps.QuotaService)
 
@@ -70,7 +69,6 @@ func NewRouter(deps RouterDependencies) http.Handler {
 	qH := handler.NewQueueHandler(deps.QueueService)
 	auditH := handler.NewAuditHandler(deps.AuditService)
 	metricsH := handler.NewMetricsHandler(deps.MetricsRegistry)
-
 
 	// Public Observability Endpoints
 	r.Get("/health/live", deps.HealthHandler.Live)
@@ -105,6 +103,11 @@ func NewRouter(deps RouterDependencies) http.Handler {
 			dr.With(middleware.RequireRole("admin", "operator")).Post("/{domain}/dkim/{selector}/verify", dkimH.Verify)
 			dr.With(middleware.RequireRole("admin", "operator")).Post("/{domain}/dkim/{selector}/activate", dkimH.Activate)
 			dr.With(middleware.RequireRole("admin")).Post("/{domain}/dkim/{selector}/revoke", dkimH.Revoke)
+
+			// Domain-scoped SMTP AUTH credentials. Raw secrets are returned only on creation.
+			dr.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/{domain}/smtp-keys", domH.ListSMTPKeys)
+			dr.With(middleware.RequireRole("admin", "operator")).Post("/{domain}/smtp-keys", domH.CreateSMTPKey)
+			dr.With(middleware.RequireRole("admin", "operator")).Post("/{domain}/smtp-keys/{keyID}/revoke", domH.RevokeSMTPKey)
 
 			// TLS
 			dr.With(middleware.RequireRole("admin", "operator", "auditor")).Get("/{domain}/tls", tlsH.Get)
@@ -157,7 +160,6 @@ func NewRouter(deps RouterDependencies) http.Handler {
 			qr.With(middleware.RequireRole("admin")).Delete("/{id}", qH.Delete)
 			qr.With(middleware.RequireRole("admin")).Post("/flush", qH.Flush)
 		})
-
 
 		// Audit
 		apiGroup.With(middleware.RequireRole("admin", "auditor")).Get("/api/v1/audit", auditH.List)

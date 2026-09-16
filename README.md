@@ -182,6 +182,23 @@ go build -o bin/mailopen ./cmd/mailopen
 ./bin/mailopen domain list
 ```
 
+#### Domain SMTP AUTH Keys
+SMTP keys are domain-scoped credentials for application senders such as OTP services. The raw secret is returned only when the key is generated; SMTP clients use the returned username and secret on `mail.<domain>:587` with STARTTLS.
+
+Use the **SMTP** action in the Domains & DNS panel, or call the API endpoints documented in [docs/api/openapi.yaml](docs/api/openapi.yaml):
+```text
+GET  /api/v1/domains/{domain}/smtp-keys
+POST /api/v1/domains/{domain}/smtp-keys
+POST /api/v1/domains/{domain}/smtp-keys/{keyID}/revoke
+```
+
+After upgrading an existing installation, run the database migration and regenerate the Postfix and Dovecot configuration so their SQL maps include SMTP keys:
+```bash
+./bin/mailopen migrate up
+./bin/mailopen postfix config generate
+./bin/mailopen dovecot config generate
+```
+
 #### Mailbox Management & Provisioning (W2.3)
 ```bash
 # Create mailbox (auto-provisions Dovecot Maildir++)

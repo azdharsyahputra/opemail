@@ -116,11 +116,14 @@ func TestPostfixConfigGeneration(t *testing.T) {
 	})
 
 	t.Run("pgsql-sender-login-maps.cf contains query for mailbox and aliases", func(t *testing.T) {
-		if !strings.Contains(configs.SenderLoginMapsCF, "SELECT email FROM mailboxes") {
+		if !strings.Contains(configs.SenderLoginMapsCF, "SELECT m.email AS login FROM mailboxes") {
 			t.Error("sender login CF missing mailbox email query")
 		}
 		if !strings.Contains(configs.SenderLoginMapsCF, "UNION") {
 			t.Error("sender login CF missing UNION query for aliases")
+		}
+		if !strings.Contains(configs.SenderLoginMapsCF, "FROM smtp_credentials") {
+			t.Error("sender login CF missing smtp credential query")
 		}
 	})
 
